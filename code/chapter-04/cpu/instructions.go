@@ -109,7 +109,6 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Handler:        c.and,
 	}
 
-
 	// MARK: LDA命令
 	instructionSet[0xA9] = instruction{
 		Mnemonic:       "LDA",
