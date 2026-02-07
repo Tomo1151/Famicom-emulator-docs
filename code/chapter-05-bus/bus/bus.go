@@ -16,8 +16,23 @@ func NewBus() Bus {
 
 // MARK: メモリの読み取り (1バイト)
 func (b *Bus) ReadByteFrom(address uint16) uint8 {
-	// TODO: 正しいコンポーネントから値を読み取って返す
-	return b.wram[address]
+	/*
+		CPU メモリマップ
+		(範囲 / サイズ / コンポーネント)
+
+		$0000-$07FF 0x0800 2kBのWRAM
+		$0800-$0FFF 0x0800 WRAMのミラーリング x3
+		$1000-$17FF 0x0800
+		$1800-$1FFF 0x0800
+	*/
+
+	switch {
+	case 0x0000 <= address && address <= 0x1FFF:
+		return b.wram[address&0x07FF] // 2kBでミラーリング
+	default:
+		// TODO: 正しいコンポーネントから値を読み取って返す
+		return 0x00
+	}
 }
 
 // MARK: メモリの読み取り (2バイト)
@@ -29,8 +44,22 @@ func (b *Bus) ReadWordFrom(address uint16) uint16 {
 
 // MARK: メモリへの書き込み (1バイト)
 func (b *Bus) WriteByteAt(address uint16, value uint8) {
-	// TODO: 正しいコンポーネントに値を書き込む
-	b.wram[address] = value
+	/*
+		CPU メモリマップ
+		(範囲 / サイズ / コンポーネント)
+
+		$0000-$07FF 0x0800 2kBのWRAM
+		$0800-$0FFF 0x0800 WRAMのミラーリング x3
+		$1000-$17FF 0x0800
+		$1800-$1FFF 0x0800
+	*/
+
+	switch {
+	case 0x0000 <= address && address <= 0x1FFF:
+		b.wram[address] = value
+	default:
+		// TODO: 正しいコンポーネントに値を書き込む
+	}
 }
 
 // MARK: メモリへの書き込み (2バイト)
