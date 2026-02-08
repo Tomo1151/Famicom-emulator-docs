@@ -103,6 +103,45 @@ func (c *CPU) calcOperandAddress(mode AddressingMode) uint16 {
 	}
 }
 
+// MARK: スタック操作
+// スタック領域へのプッシュ (1バイト)
+func (c *CPU) pushByte(value uint8) {
+	ptr := 0x0100 | uint16(c.registers.SP)
+	c.bus.WriteByteAt(ptr, value)
+	c.registers.SP--
+}
+
+// スタック領域へのプッシュ (2バイト)
+func (c *CPU) pushWord(value uint16) {
+	ptr := 0x0100 | uint16(c.registers.SP)
+	c.bus.WriteByteAt(ptr, (uint8(value >> 8)))
+	c.registers.SP--
+
+	ptr = 0x0100 | uint16(c.registers.SP)
+	c.bus.WriteByteAt(ptr, (uint8(value & 0xFF)))
+	c.registers.SP--
+}
+
+// スタック領域からのプル (1バイト)
+func (c *CPU) pullByte() uint8 {
+	c.registers.SP++
+	ptr := 0x0100 | uint16(c.registers.SP)
+	return c.bus.ReadByteFrom(ptr)
+}
+
+// スタック領域からのプル (2バイト)
+func (c *CPU) pullWord() uint16 {
+	c.registers.SP++
+	ptr := 0x0100 | uint16(c.registers.SP)
+	lower := c.bus.ReadByteFrom(ptr)
+
+	c.registers.SP++
+	ptr = 0x0100 | uint16(c.registers.SP)
+	upper := c.bus.ReadByteFrom(ptr)
+
+	return uint16(upper)<<8 | uint16(lower)
+}
+
 // MARK: AND命令の実装
 func (c *CPU) and(mode AddressingMode) {
 	address := c.calcOperandAddress(mode)
