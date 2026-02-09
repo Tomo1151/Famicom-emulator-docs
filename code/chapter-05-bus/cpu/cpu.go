@@ -607,6 +607,158 @@ func (c *CPU) tya(_ AddressingMode) {
 func (c *CPU) nop(_ AddressingMode) {
 }
 
+// MARK: 非公式命令
+// ALR命令の実装 (ASR)
+func (c *CPU) alr(mode AddressingMode) {
+	c.and(mode)
+	c.lsr(Accumulator)
+}
+
+// ANC命令の実装 (AAC)
+func (c *CPU) anc(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.A &= value
+	c.updateNZFlags(c.registers.A)
+	c.registers.P.Carry = c.registers.P.Negative
+}
+
+// ARR命令の実装 (ARR)
+func (c *CPU) arr(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.A &= value
+	c.registers.A >>= 1
+	if c.registers.P.Carry {
+		c.registers.A |= (1 << 7)
+	}
+
+	c.registers.P.Carry = (c.registers.A >> 6) != 0
+	c.registers.P.Overflow = ((c.registers.A >> 6) & 1) != ((c.registers.A >> 5) & 1) // XOR
+	c.updateNZFlags(c.registers.A)
+}
+
+// AXS命令の実装 (SBX / SAX)
+func (c *CPU) axs(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.X &= c.registers.A
+
+	c.registers.P.Carry = c.registers.X >= value
+	c.registers.X -= value
+	c.updateNZFlags(c.registers.X)
+}
+
+// LAX命令の実装 (ATX / LXA / OAL)
+func (c *CPU) lax(mode AddressingMode) {
+	c.lda(mode)
+	c.tax(mode)
+}
+
+// SAX命令の実装 (AAX / AXS)
+func (c *CPU) sax(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	result := c.registers.X & c.registers.A
+	c.bus.WriteByteAt(address, result)
+}
+
+// AHX命令の実装 (AXA / SHA)
+func (c *CPU) ahx(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	result := (c.registers.X & c.registers.A) & 7
+	c.bus.WriteByteAt(address, result)
+}
+
+// DCP命令の実装 (DCP)
+func (c *CPU) dcp(mode AddressingMode) {
+	c.dec(mode)
+	c.cmp(mode)
+}
+
+// ISC命令の実装 (ISB / INS)
+func (c *CPU) isc(mode AddressingMode) {
+	c.inc(mode)
+	c.sbc(mode)
+}
+
+// LAS命令の実装 (LAR / LAE)
+func (c *CPU) las(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	result := c.registers.SP & value
+
+	c.registers.A = result
+	c.registers.X = result
+	c.registers.SP = result
+	c.updateNZFlags(result)
+}
+
+// RLA命令の実装 (RLA)
+func (c *CPU) rla(mode AddressingMode) {
+	c.rol(mode)
+	c.and(mode)
+}
+
+// RRA命令の実装 (RRA)
+func (c *CPU) rra(mode AddressingMode) {
+	c.ror(mode)
+	c.adc(mode)
+}
+
+// SLO命令の実装 (ASO)
+func (c *CPU) slo(mode AddressingMode) {
+	c.asl(mode)
+	c.ora(mode)
+}
+
+// SRE命令の実装 (LSE)
+func (c *CPU) sre(mode AddressingMode) {
+	c.lsr(mode)
+	c.eor(mode)
+}
+
+// TAS命令の実装 (SHS)
+func (c *CPU) tas(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	c.registers.SP = (c.registers.X & c.registers.A)
+	result := c.registers.SP & (uint8(address>>8) + 1)
+	c.bus.WriteByteAt(address, result)
+}
+
+// SHX命令の実装 (SXA / XAS)
+func (c *CPU) shx(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	result := c.registers.X & (uint8(address>>8) + 1)
+	c.bus.WriteByteAt(address, result)
+}
+
+// SHY命令の実装 (SYA / SAY)
+func (c *CPU) shy(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	result := c.registers.Y & (uint8(address>>8) + 1)
+	c.bus.WriteByteAt(address, result)
+}
+
+// KIL命令の実装 (JAM / HLT)
+func (c *CPU) kil(_ AddressingMode) {
+}
+
+// DOP命令の実装 (NOP / SKB / SKW)
+func (c *CPU) dop(_ AddressingMode) {
+}
+
+// TOP命令の実装 (NOP / IGN)
+func (c *CPU) top(_ AddressingMode) {
+}
+
+// XAA命令の実装 (ANE)
+func (c *CPU) xaa(mode AddressingMode) {
+	// NOTE: 未定義動作
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.A = (c.registers.A | 0xEE) & c.registers.X & value
+}
+
 // MARK: uint8の配列から実行
 func (c *CPU) RunWithByteArray(program []uint8) {
 	// Busに仮のプログラムをセット

@@ -1462,5 +1462,855 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Handler:        c.nop,
 	}
 
+	// MARK: 非公式命令
+	// ALR命令 (ASR)
+	instructionSet[0x4B] = instruction{
+		Mnemonic:       "ALR",
+		Opcode:         0x4B,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.alr,
+	}
+
+	// ANC命令 (AAC)
+	instructionSet[0x0B] = instruction{
+		Mnemonic:       "ANC",
+		Opcode:         0x0B,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.anc,
+	}
+
+	instructionSet[0x2B] = instruction{
+		Mnemonic:       "ANC",
+		Opcode:         0x2B,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.anc,
+	}
+
+	// ARR命令 (ARR)
+	instructionSet[0x6B] = instruction{
+		Mnemonic:       "ARR",
+		Opcode:         0x6B,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.arr,
+	}
+
+	// AXS命令 (SBX / SAX)
+	instructionSet[0xCB] = instruction{
+		Mnemonic:       "AXS",
+		Opcode:         0xCB,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.axs,
+	}
+
+	// LAX命令 (ATX / LXA / OAL)
+	instructionSet[0xAB] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xAB,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.lax,
+	}
+
+	// SAX命令 (AAX / AXS)
+	instructionSet[0x87] = instruction{
+		Mnemonic:       "SAX",
+		Opcode:         0x87,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         3,
+		Handler:        c.sax,
+	}
+
+	instructionSet[0x97] = instruction{
+		Mnemonic:       "SAX",
+		Opcode:         0x97,
+		AddressingMode: ZeroPageYIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.sax,
+	}
+
+	instructionSet[0x83] = instruction{
+		Mnemonic:       "SAX",
+		Opcode:         0x83,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.sax,
+	}
+
+	instructionSet[0x8F] = instruction{
+		Mnemonic:       "SAX",
+		Opcode:         0x8F,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.sax,
+	}
+
+	// AHX命令 (AXA / SHA)
+	instructionSet[0x9F] = instruction{
+		Mnemonic:       "AHX",
+		Opcode:         0x9F,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.ahx,
+	}
+
+	instructionSet[0x93] = instruction{
+		Mnemonic:       "AHX",
+		Opcode:         0x93,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         5,
+		Handler:        c.ahx,
+	}
+
+	// DCP命令 (DCM)
+	instructionSet[0xC7] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xC7,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xD7] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xD7,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xCF] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xCF,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xDF] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xDF,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xDB] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xDB,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xC3] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xC3,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.dcp,
+	}
+
+	instructionSet[0xD3] = instruction{
+		Mnemonic:       "DCP",
+		Opcode:         0xD3,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.dcp,
+	}
+
+	// ISC命令 (ISB / INS)
+	instructionSet[0xE7] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xE7,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xF7] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xF7,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xEF] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xEF,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xFF] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xFF,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xFB] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xFB,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xE3] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xE3,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.isc,
+	}
+
+	instructionSet[0xF3] = instruction{
+		Mnemonic:       "ISC",
+		Opcode:         0xF3,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.isc,
+	}
+
+	// LAS命令 (LAR / LAE)
+	instructionSet[0xBB] = instruction{
+		Mnemonic:       "LAS",
+		Opcode:         0xBB,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.las,
+	}
+
+	// RLA命令 (RLA)
+	instructionSet[0x27] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x27,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x37] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x37,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x2F] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x2F,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x3F] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x3F,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x3B] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x3B,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x23] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x23,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.rla,
+	}
+
+	instructionSet[0x33] = instruction{
+		Mnemonic:       "RLA",
+		Opcode:         0x33,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.rla,
+	}
+
+	// RRA命令 (RRA)
+	instructionSet[0x67] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x67,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x77] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x77,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x6F] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x6F,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x7F] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x7F,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x7B] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x7B,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x63] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x63,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.rra,
+	}
+
+	instructionSet[0x73] = instruction{
+		Mnemonic:       "RRA",
+		Opcode:         0x73,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.rra,
+	}
+
+	// SLO命令 (ASO)
+	instructionSet[0x07] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x07,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x17] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x17,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x0F] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x0F,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x1F] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x1F,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x1B] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x1B,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x03] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x03,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.slo,
+	}
+
+	instructionSet[0x13] = instruction{
+		Mnemonic:       "SLO",
+		Opcode:         0x13,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.slo,
+	}
+
+	// SRE命令 (LSE)
+	instructionSet[0x47] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x47,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x57] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x57,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x4F] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x4F,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         6,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x5F] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x5F,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x5B] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x5B,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         7,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x43] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x43,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.sre,
+	}
+
+	instructionSet[0x53] = instruction{
+		Mnemonic:       "SRE",
+		Opcode:         0x53,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         8,
+		Handler:        c.sre,
+	}
+
+	// TAS命令 (XAS / SHS)
+	instructionSet[0x9B] = instruction{
+		Mnemonic:       "TAS",
+		Opcode:         0x9B,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         5,
+		Handler:        c.tas,
+	}
+
+	// SHX命令 (SXA / XAS)
+	instructionSet[0x9E] = instruction{
+		Mnemonic:       "SHX",
+		Opcode:         0x9E,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         5,
+		Handler:        c.shx,
+	}
+
+	// SHY命令 (SYA / SAY)
+	instructionSet[0x9C] = instruction{
+		Mnemonic:       "SHY",
+		Opcode:         0x9C,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         5,
+		Handler:        c.shy,
+	}
+
+	// KIL命令 (JAM / HLT)
+	instructionSet[0x02] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x02,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x12] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x12,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x22] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x22,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x32] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x32,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x42] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x42,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x52] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x52,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x62] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x62,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x72] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x72,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0x92] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0x92,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0xB2] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0xB2,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0xD2] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0xD2,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	instructionSet[0xF2] = instruction{
+		Mnemonic:       "KIL",
+		Opcode:         0xF2,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         0,
+		Handler:        c.kil,
+	}
+
+	// DOP命令 (NOP / SKB / SKW)
+	instructionSet[0x04] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x04,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         3,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x14] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x14,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x34] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x34,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x44] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x44,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         3,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x54] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x54,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x64] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x64,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         3,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x74] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x74,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x80] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x80,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x82] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x82,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0x89] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0x89,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0xC2] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0xC2,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0xD4] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0xD4,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0xE2] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0xE2,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.dop,
+	}
+
+	instructionSet[0xF4] = instruction{
+		Mnemonic:       "DOP",
+		Opcode:         0xF4,
+		AddressingMode: ZeroPageXIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.dop,
+	}
+
+	// TOP命令 (IGN)
+	instructionSet[0x0C] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0x0C,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0x1C] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0x1C,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0x3C] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0x3C,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0x5C] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0x5C,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0x7C] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0x7C,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0xDC] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0xDC,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	instructionSet[0xFC] = instruction{
+		Mnemonic:       "TOP",
+		Opcode:         0xFC,
+		AddressingMode: AbsoluteXIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.top,
+	}
+
+	// XAA命令 (ANE)
+	instructionSet[0x8B] = instruction{
+		Mnemonic:       "XAA",
+		Opcode:         0x8B,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.xaa,
+	}
+
 	return instructionSet
 }
