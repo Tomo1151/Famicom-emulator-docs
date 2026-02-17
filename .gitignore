@@ -33,3 +33,6 @@ go.work.sum
 
 # asdf
 .tool-versions
+
+# rom
+rom/
