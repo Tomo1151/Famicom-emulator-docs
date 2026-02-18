@@ -785,7 +785,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 
 	// BVC命令
 	instructionSet[0x50] = instruction{
-		Mnemonic:       "BCS",
+		Mnemonic:       "BVC",
 		Opcode:         0x50,
 		AddressingMode: Relative,
 		Bytes:          2,
@@ -1512,14 +1512,14 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Handler:        c.axs,
 	}
 
-	// LAX命令 (ATX / LXA / OAL)
+	// LXA命令 (ATX / OAL)
 	instructionSet[0xAB] = instruction{
-		Mnemonic:       "LAX",
+		Mnemonic:       "LXA",
 		Opcode:         0xAB,
 		AddressingMode: Immediate,
 		Bytes:          2,
 		Cycles:         2,
-		Handler:        c.lax,
+		Handler:        c.lxa,
 	}
 
 	// SAX命令 (AAX / AXS)
@@ -1716,6 +1716,61 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Handler:        c.las,
 	}
 
+	// LAX命令 (LAX)
+	instructionSet[0xA7] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xA7,
+		AddressingMode: ZeroPage,
+		Bytes:          2,
+		Cycles:         3,
+		Handler:        c.lax,
+	}
+
+	instructionSet[0xB7] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xB7,
+		AddressingMode: ZeroPageYIndexed,
+		Bytes:          2,
+		Cycles:         4,
+		Handler:        c.lax,
+	}
+
+	instructionSet[0xAF] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xAF,
+		AddressingMode: Absolute,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.lax,
+	}
+
+	instructionSet[0xBF] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xBF,
+		AddressingMode: AbsoluteYIndexed,
+		Bytes:          3,
+		Cycles:         4,
+		Handler:        c.lax,
+	}
+
+	instructionSet[0xA3] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xA3,
+		AddressingMode: IndexedIndirect,
+		Bytes:          2,
+		Cycles:         6,
+		Handler:        c.lax,
+	}
+
+	instructionSet[0xB3] = instruction{
+		Mnemonic:       "LAX",
+		Opcode:         0xB3,
+		AddressingMode: IndirectIndexed,
+		Bytes:          2,
+		Cycles:         5,
+		Handler:        c.lax,
+	}
+
 	// RLA命令 (RLA)
 	instructionSet[0x27] = instruction{
 		Mnemonic:       "RLA",
@@ -1842,6 +1897,16 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Bytes:          2,
 		Cycles:         8,
 		Handler:        c.rra,
+	}
+
+	// SBC命令 (SBC)
+	instructionSet[0xEB] = instruction{
+		Mnemonic:       "SBC",
+		Opcode:         0xEB,
+		AddressingMode: Immediate,
+		Bytes:          2,
+		Cycles:         2,
+		Handler:        c.sbc,
 	}
 
 	// SLO命令 (ASO)
@@ -2109,6 +2174,61 @@ func generateInstructionSet(c *CPU) instructionSet {
 		Bytes:          1,
 		Cycles:         0,
 		Handler:        c.kil,
+	}
+
+	// NOP命令 (NOP)
+	instructionSet[0x1A] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0x1A,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
+	}
+
+	instructionSet[0x3A] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0x3A,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
+	}
+
+	instructionSet[0x5A] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0x5A,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
+	}
+
+	instructionSet[0x7A] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0x7A,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
+	}
+
+	instructionSet[0xDA] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0xDA,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
+	}
+
+	instructionSet[0xFA] = instruction{
+		Mnemonic:       "NOP",
+		Opcode:         0xFA,
+		AddressingMode: Implied,
+		Bytes:          1,
+		Cycles:         2,
+		Handler:        c.nop,
 	}
 
 	// DOP命令 (NOP / SKB / SKW)

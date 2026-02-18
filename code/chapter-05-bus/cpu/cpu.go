@@ -649,10 +649,13 @@ func (c *CPU) axs(mode AddressingMode) {
 	c.updateNZFlags(c.registers.X)
 }
 
-// LAX命令の実装 (ATX / LXA / OAL)
-func (c *CPU) lax(mode AddressingMode) {
-	c.lda(mode)
-	c.tax(mode)
+// LXA命令の実装 (ATX / OAL)
+func (c *CPU) lxa(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.A &= value
+	c.registers.X = c.registers.A
+	c.updateNZFlags(c.registers.X)
 }
 
 // SAX命令の実装 (AAX / AXS)
@@ -691,6 +694,12 @@ func (c *CPU) las(mode AddressingMode) {
 	c.registers.X = result
 	c.registers.SP = result
 	c.updateNZFlags(result)
+}
+
+// LAX命令の実装 (LAX)
+func (c *CPU) lax(mode AddressingMode) {
+	c.lda(mode)
+	c.tax(mode)
 }
 
 // RLA命令の実装 (RLA)
