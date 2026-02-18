@@ -1,14 +1,14 @@
 package cpu
 
 const (
-	STATUS_REG_NEGATIVE_POS uint8 = iota
-	STATUS_REG_OVERFLOW_POS
-	STATUS_REG_RESERVED_POS
-	STATUS_REG_BREAK_POS
-	STATUS_REG_DECIMAL_POS
-	STATUS_REG_IRQDISABLED_POS
+	STATUS_REG_CARRY_POS uint8 = iota
 	STATUS_REG_ZERO_POS
-	STATUS_REG_CARRY_POS
+	STATUS_REG_IRQDISABLED_POS
+	STATUS_REG_DECIMAL_POS
+	STATUS_REG_BREAK_POS
+	STATUS_REG_RESERVED_POS
+	STATUS_REG_OVERFLOW_POS
+	STATUS_REG_NEGATIVE_POS
 )
 
 // MARK: CPUレジスタの定義
@@ -40,8 +40,8 @@ func NewStatusRegister() statusRegister {
 		Overflow:    false,
 		Reserved:    true,
 		Break:       false,
-		Decimal:     true,
-		IrqDisabled: false,
+		Decimal:     false,
+		IrqDisabled: true,
 		Zero:        false,
 		Carry:       false,
 	}
