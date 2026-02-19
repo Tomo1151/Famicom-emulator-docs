@@ -2,7 +2,6 @@ package cpu
 
 import (
 	"fmt"
-	"os"
 
 	"fc-emu/bus"
 )
@@ -40,11 +39,6 @@ func (c *CPU) Step() {
 	// 命令のフェッチ
 	opcode := c.bus.ReadByteFrom(c.registers.PC)
 	c.registers.PC++
-
-	// FIXME: テスト用としてBRK命令で終了
-	if opcode == 0x00 {
-		os.Exit(0)
-	}
 
 	// 命令のデコード
 	instruction := c.instructionSet[opcode]
