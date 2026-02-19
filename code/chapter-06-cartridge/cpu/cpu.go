@@ -2,6 +2,7 @@ package cpu
 
 import (
 	"fmt"
+	"os"
 
 	"fc-emu/bus"
 )
@@ -34,6 +35,40 @@ func NewCPU(bus bus.Bus) *CPU {
 	return cpu
 }
 
+// MARK: 命令サイクルの実行メソッド
+func (c *CPU) Step() {
+	// 命令のフェッチ
+	opcode := c.bus.ReadByteFrom(c.registers.PC)
+	c.registers.PC++
+
+	// FIXME: テスト用としてBRK命令で終了
+	if opcode == 0x00 {
+		os.Exit(0)
+	}
+
+	// 命令のデコード
+	instruction := c.instructionSet[opcode]
+
+	// 命令の実行
+	instruction.Handler(instruction.AddressingMode)
+
+	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 - 1）
+	if instruction.Mnemonic == "JMP" ||
+		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
+		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
+		return
+	}
+	c.registers.PC += uint16(instruction.Bytes - 1)
+}
+
+// MARK: 実行メソッド
+func (c *CPU) Run() {
+	for {
+		fmt.Println(c.Trace())
+		c.Step()
+	}
+}
+
 // MARK: N/Zフラグの更新メソッド
 func (c *CPU) updateNZFlags(result uint8) {
 	// Nフラグの更新
@@ -48,34 +83,6 @@ func (c *CPU) updateNZFlags(result uint8) {
 		c.registers.P.Zero = true
 	} else {
 		c.registers.P.Zero = false
-	}
-}
-
-// MARK: 命令サイクルの実行メソッド
-func (c *CPU) Step() {
-	// 命令のフェッチ
-	opcode := c.bus.ReadByteFrom(c.registers.PC)
-	c.registers.PC++
-
-	// 命令のデコード
-	instruction := c.instructionSet[opcode]
-
-	// 命令の実行
-	instruction.Handler(instruction.AddressingMode)
-
-	// 命令長の分プログラムカウンタを進める (オペコードの分-1)
-	if instruction.Mnemonic == "JMP" ||
-		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" || instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
-		return
-	}
-	c.registers.PC += uint16(instruction.Bytes - 1)
-}
-
-// MARK: 実行メソッド
-func (c *CPU) Run() {
-	for {
-		fmt.Println(c.TraceLog())
-		c.Step()
 	}
 }
 
@@ -798,8 +805,22 @@ func (c *CPU) xaa(mode AddressingMode) {
 	c.registers.A = (c.registers.A | 0xEE) & c.registers.X & value
 }
 
+// MARK: uint8の配列から実行
+func (c *CPU) RunWithByteArray(program []uint8) {
+	// wramにプログラムを書き込み
+	for i := range len(program) {
+		c.bus.WriteByteAt(uint16(i), program[i])
+	}
+
+	// 実行の無限ループ
+	for {
+		fmt.Println(c.Trace())
+		c.Step()
+	}
+}
+
 // MARK: CPUのログトレースをとるメソッド
-func (c *CPU) TraceLog() string {
+func (c *CPU) Trace() string {
 	// 命令の情報を取得
 	base := c.registers.PC
 	opcode := c.bus.ReadByteFrom(base)
@@ -947,46 +968,11 @@ func (c *CPU) TraceLog() string {
 
 	// 行全体の組み立て
 	return fmt.Sprintf(
-		"%04X  %s %4s %-27s %s",
+		"%04X  %s %4s %-28s %s",
 		base,
 		hexDump,
 		instruction.Mnemonic,
 		operandString,
 		registersInfo,
 	)
-}
-
-// MARK: uint8の配列から実行
-func (c *CPU) RunWithByteArray(program []uint8) {
-	// Busに仮のプログラムをセット
-	for i := range len(program) {
-		c.bus.WriteByteAt(uint16(i), program[i])
-	}
-
-	for {
-		// 命令のフェッチ
-		opcode := c.bus.ReadByteFrom(c.registers.PC)
-		c.registers.PC++
-
-		if opcode == 0x00 {
-			return
-		}
-
-		// 命令のデコード
-		instruction := c.instructionSet[opcode]
-
-		// 命令の実行
-		instruction.Handler(instruction.AddressingMode)
-
-		fmt.Printf(
-			"%04X: [%s] 0x%02X, %v\n",
-			c.registers.PC-1,
-			instruction.Mnemonic,
-			instruction.Opcode,
-			c.registers,
-		)
-
-		// 命令長の分プログラムカウンタを進める (オペコードの分-1)
-		c.registers.PC += uint16(instruction.Bytes - 1)
-	}
 }
