@@ -7,7 +7,7 @@ const (
 	Implied          AddressingMode = iota // impl
 	Accumulator                            // A
 	Immediate                              // #
-	ZeroPage                               //zpg
+	ZeroPage                               // zpg
 	ZeroPageXIndexed                       // zpg,X
 	ZeroPageYIndexed                       // zpg,Y
 	Absolute                               // abs
@@ -30,11 +30,11 @@ type instruction struct {
 }
 
 // MARK: 命令セットの定義
-type instructionSet map[uint8]instruction
+type instructionSet [256]instruction
 
 // MARK: 命令セットの生成関数
 func generateInstructionSet(c *CPU) instructionSet {
-	instructionSet := make(instructionSet)
+	instructionSet := instructionSet{}
 
 	// MARK: AND命令
 	instructionSet[0x29] = instruction{
