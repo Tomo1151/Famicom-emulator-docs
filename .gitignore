@@ -35,4 +35,5 @@ go.work.sum
 .tool-versions
 
 # rom
-rom/
+rom/*
+!rom/.keep
