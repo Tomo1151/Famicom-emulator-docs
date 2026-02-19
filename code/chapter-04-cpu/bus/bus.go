@@ -34,7 +34,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 }
 
 // MARK: メモリへの書き込み (2バイト)
-func (b *Bus) WriteWordAt(address uint16, value uint8) {
+func (b *Bus) WriteWordAt(address uint16, value uint16) {
 	lower := uint8(value & 0xFF)
 	upper := uint8(value >> 8)
 	b.WriteByteAt(address, lower)
