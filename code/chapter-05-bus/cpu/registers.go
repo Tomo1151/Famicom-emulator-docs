@@ -40,8 +40,8 @@ func NewStatusRegister() statusRegister {
 		Overflow:    false,
 		Reserved:    true,
 		Break:       false,
-		Decimal:     true,
-		IrqDisabled: false,
+		Decimal:     false,
+		IrqDisabled: true,
 		Zero:        false,
 		Carry:       false,
 	}

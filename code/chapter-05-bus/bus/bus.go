@@ -56,7 +56,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 
 	switch {
 	case 0x0000 <= address && address <= 0x1FFF:
-		b.wram[address] = value
+		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	default:
 		// TODO: 正しいコンポーネントに値を書き込む
 	}

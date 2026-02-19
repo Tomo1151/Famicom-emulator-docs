@@ -74,7 +74,7 @@ func (c *CPU) Step() {
 // MARK: 実行メソッド
 func (c *CPU) Run() {
 	for {
-		c.TraceLog()
+		fmt.Println(c.TraceLog())
 		c.Step()
 	}
 }
@@ -799,11 +799,13 @@ func (c *CPU) xaa(mode AddressingMode) {
 }
 
 // MARK: CPUのログトレースをとるメソッド
-func (c *CPU) TraceLog() {
+func (c *CPU) TraceLog() string {
+	// 命令の情報を取得
 	base := c.registers.PC
 	opcode := c.bus.ReadByteFrom(base)
 	instruction := c.instructionSet[opcode]
 
+	// オペランドの読み取り
 	var operand1, operand2 uint8
 	if instruction.Bytes > 1 {
 		operand1 = c.bus.ReadByteFrom(base + 1)
@@ -812,6 +814,7 @@ func (c *CPU) TraceLog() {
 		operand2 = c.bus.ReadByteFrom(base + 2)
 	}
 
+	// 16進ダンプの組み立て
 	hexDump := fmt.Sprintf("%02X", opcode)
 	switch instruction.Bytes {
 	case 2:
@@ -821,6 +824,7 @@ func (c *CPU) TraceLog() {
 	}
 	hexDump = fmt.Sprintf("%-8s", hexDump)
 
+	// オペランド文字列の組み立て
 	var operandString string
 	var effectiveAddress uint16
 
@@ -931,6 +935,7 @@ func (c *CPU) TraceLog() {
 		)
 	}
 
+	// レジスタ情報の組み立て
 	registersInfo := fmt.Sprintf(
 		"A:%02X X:%02X Y:%02X P:%02X SP:%02X",
 		c.registers.A,
@@ -940,17 +945,13 @@ func (c *CPU) TraceLog() {
 		c.registers.SP,
 	)
 
-	asm := fmt.Sprintf(
-		"%04X  %s %4s %s",
+	// 行全体の組み立て
+	return fmt.Sprintf(
+		"%04X  %s %4s %-27s %s",
 		base,
 		hexDump,
 		instruction.Mnemonic,
 		operandString,
-	)
-
-	fmt.Printf(
-		"%-47s %s\n",
-		asm,
 		registersInfo,
 	)
 }
