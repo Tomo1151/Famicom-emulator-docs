@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"fc-emu/bus"
 	"fc-emu/cartridge"
 	"fc-emu/cpu"
@@ -15,7 +13,7 @@ func main() {
 	// ROMファイルの読み込み
 	err := ct.Load()
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 
 	// CPUの作成・実行
