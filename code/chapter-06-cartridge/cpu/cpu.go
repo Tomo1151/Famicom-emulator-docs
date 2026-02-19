@@ -15,20 +15,22 @@ type CPU struct {
 }
 
 // MARK: CPUのコンストラクタ
-func NewCPU() *CPU {
-	cpu := &CPU{
-		registers: registers{
-			A:  0x00,
-			X:  0x00,
-			Y:  0x00,
-			SP: 0xFD,
-			PC: 0x0000,
-			P:  NewStatusRegister(),
-		},
-		bus: bus.NewBus(),
-	}
-	cpu.instructionSet = generateInstructionSet(cpu)
+func NewCPU(bus bus.Bus) *CPU {
+	cpu := &CPU{}
 
+	cpu.bus = bus
+	cpu.instructionSet = generateInstructionSet(cpu)
+	cpu.registers = registers{
+		A:  0x00,
+		X:  0x00,
+		Y:  0x00,
+		SP: 0xFD,
+		PC: cpu.bus.ReadWordFrom(0xFFFC),
+		P:  NewStatusRegister(),
+	}
+
+	// FIXME: nestest用のエントリポイント
+	cpu.registers.PC = 0xC000
 	return cpu
 }
 
@@ -46,6 +48,34 @@ func (c *CPU) updateNZFlags(result uint8) {
 		c.registers.P.Zero = true
 	} else {
 		c.registers.P.Zero = false
+	}
+}
+
+// MARK: 命令サイクルの実行メソッド
+func (c *CPU) Step() {
+	// 命令のフェッチ
+	opcode := c.bus.ReadByteFrom(c.registers.PC)
+	c.registers.PC++
+
+	// 命令のデコード
+	instruction := c.instructionSet[opcode]
+
+	// 命令の実行
+	instruction.Handler(instruction.AddressingMode)
+
+	// 命令長の分プログラムカウンタを進める (オペコードの分-1)
+	if instruction.Mnemonic == "JMP" ||
+		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" || instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
+		return
+	}
+	c.registers.PC += uint16(instruction.Bytes - 1)
+}
+
+// MARK: 実行メソッド
+func (c *CPU) Run() {
+	for {
+		c.TraceLog()
+		c.Step()
 	}
 }
 
@@ -649,10 +679,13 @@ func (c *CPU) axs(mode AddressingMode) {
 	c.updateNZFlags(c.registers.X)
 }
 
-// LAX命令の実装 (ATX / LXA / OAL)
-func (c *CPU) lax(mode AddressingMode) {
-	c.lda(mode)
-	c.tax(mode)
+// LXA命令の実装 (ATX / OAL)
+func (c *CPU) lxa(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	value := c.bus.ReadByteFrom(address)
+	c.registers.A &= value
+	c.registers.X = c.registers.A
+	c.updateNZFlags(c.registers.X)
 }
 
 // SAX命令の実装 (AAX / AXS)
@@ -691,6 +724,12 @@ func (c *CPU) las(mode AddressingMode) {
 	c.registers.X = result
 	c.registers.SP = result
 	c.updateNZFlags(result)
+}
+
+// LAX命令の実装 (LAX)
+func (c *CPU) lax(mode AddressingMode) {
+	c.lda(mode)
+	c.tax(mode)
 }
 
 // RLA命令の実装 (RLA)
@@ -757,6 +796,163 @@ func (c *CPU) xaa(mode AddressingMode) {
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.A = (c.registers.A | 0xEE) & c.registers.X & value
+}
+
+// MARK: CPUのログトレースをとるメソッド
+func (c *CPU) TraceLog() {
+	base := c.registers.PC
+	opcode := c.bus.ReadByteFrom(base)
+	instruction := c.instructionSet[opcode]
+
+	var operand1, operand2 uint8
+	if instruction.Bytes > 1 {
+		operand1 = c.bus.ReadByteFrom(base + 1)
+	}
+	if instruction.Bytes > 2 {
+		operand2 = c.bus.ReadByteFrom(base + 2)
+	}
+
+	hexDump := fmt.Sprintf("%02X", opcode)
+	switch instruction.Bytes {
+	case 2:
+		hexDump = fmt.Sprintf("%02X %02X", opcode, operand1)
+	case 3:
+		hexDump = fmt.Sprintf("%02X %02X %02X", opcode, operand1, operand2)
+	}
+	hexDump = fmt.Sprintf("%-8s", hexDump)
+
+	var operandString string
+	var effectiveAddress uint16
+
+	switch instruction.AddressingMode {
+	case Implied:
+	case Accumulator:
+		operandString = "A"
+	case Immediate:
+		operandString = fmt.Sprintf("#$%02X", operand1)
+	case Relative:
+		offset := int8(operand1)
+		target := base + 2 + uint16(offset)
+		operandString = fmt.Sprintf("$%04X", target)
+	case ZeroPage:
+		effectiveAddress = uint16(operand1)
+		operandString = fmt.Sprintf(
+			"$%02X = %02X",
+			operand1,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case ZeroPageXIndexed:
+		base := operand1
+		effectiveAddress = uint16(uint8(base + c.registers.X))
+		operandString = fmt.Sprintf(
+			"$%02X,X @ %02X = %02X",
+			base,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case ZeroPageYIndexed:
+		base := operand1
+		effectiveAddress = uint16(uint8(base + c.registers.Y))
+		operandString = fmt.Sprintf(
+			"$%02X,Y @ %02X = %02X",
+			base,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case Absolute:
+		effectiveAddress = uint16(operand1) | (uint16(operand2) << 8)
+		if instruction.Mnemonic == "JMP" || instruction.Mnemonic == "JSR" {
+			operandString = fmt.Sprintf("$%04X", effectiveAddress)
+		} else {
+			operandString = fmt.Sprintf(
+				"$%04X = %02X",
+				effectiveAddress,
+				c.bus.ReadByteFrom(effectiveAddress),
+			)
+		}
+	case AbsoluteXIndexed:
+		base := uint16(operand1) | (uint16(operand2) << 8)
+		effectiveAddress = base + uint16(c.registers.X)
+		operandString = fmt.Sprintf(
+			"$%04X,X @ %04X = %02X",
+			base,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case AbsoluteYIndexed:
+		base := uint16(operand1) | (uint16(operand2) << 8)
+		effectiveAddress = base + uint16(c.registers.Y)
+		operandString = fmt.Sprintf(
+			"$%04X,Y @ %04X = %02X",
+			base,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case Indirect:
+		ptr := uint16(operand1) | (uint16(operand2) << 8)
+		var target uint16
+		if ptr&0x00FF == 0x00FF {
+			low := c.bus.ReadByteFrom(ptr)
+			high := c.bus.ReadByteFrom(ptr & 0xFF00)
+			target = uint16(high)<<8 | uint16(low)
+		} else {
+			target = c.bus.ReadWordFrom(ptr)
+		}
+		operandString = fmt.Sprintf(
+			"($%04X) = %04X",
+			ptr,
+			target,
+		)
+	case IndexedIndirect:
+		base := operand1
+		ptr := uint8(base + c.registers.X)
+		low := c.bus.ReadByteFrom(uint16(ptr))
+		high := c.bus.ReadByteFrom(uint16(ptr+1) & 0x00FF)
+		effectiveAddress = uint16(high)<<8 | uint16(low)
+		operandString = fmt.Sprintf(
+			"($%02X,X) @ %02X = %04X = %02X",
+			base,
+			ptr,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	case IndirectIndexed:
+		base := operand1
+		low := c.bus.ReadByteFrom(uint16(base))
+		high := c.bus.ReadByteFrom(uint16(base+1) & 0x00FF)
+		baseAddr := uint16(high)<<8 | uint16(low)
+		effectiveAddress = baseAddr + uint16(c.registers.Y)
+		operandString = fmt.Sprintf(
+			"($%02X),Y = %04X @ %04X = %02X",
+			base,
+			baseAddr,
+			effectiveAddress,
+			c.bus.ReadByteFrom(effectiveAddress),
+		)
+	}
+
+	registersInfo := fmt.Sprintf(
+		"A:%02X X:%02X Y:%02X P:%02X SP:%02X",
+		c.registers.A,
+		c.registers.X,
+		c.registers.Y,
+		c.registers.P.ToByte(),
+		c.registers.SP,
+	)
+
+	asm := fmt.Sprintf(
+		"%04X  %s %4s %s",
+		base,
+		hexDump,
+		instruction.Mnemonic,
+		operandString,
+	)
+
+	fmt.Printf(
+		"%-47s %s\n",
+		asm,
+		registersInfo,
+	)
 }
 
 // MARK: uint8の配列から実行

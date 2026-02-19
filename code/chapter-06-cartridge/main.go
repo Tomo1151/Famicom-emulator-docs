@@ -1,15 +1,24 @@
 package main
 
 import (
+	"fmt"
+
+	"fc-emu/bus"
+	"fc-emu/cartridge"
 	"fc-emu/cpu"
 )
 
 func main() {
-	c := cpu.NewCPU()
+	// カートリッジの作成
+	ct := cartridge.NewCartridge("nestest.nes")
 
-	// 配列から以下のプログラムを実行
-	// LDA #$24    ; A = $24
-	// AND #$0F    ; A = A & $0F
-	// BRK         ; break0
-	c.RunWithByteArray([]uint8{0xA9, 0x24, 0x29, 0x0F, 0x00})
+	// ROMファイルの読み込み
+	err := ct.Load()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// CPUの作成・実行
+	c := cpu.NewCPU(bus.NewBus(ct))
+	c.Run()
 }
