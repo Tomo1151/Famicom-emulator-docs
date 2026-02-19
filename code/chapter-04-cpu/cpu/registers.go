@@ -1,5 +1,6 @@
 package cpu
 
+// MARK: 定数定義
 const (
 	STATUS_REG_CARRY_POS uint8 = iota
 	STATUS_REG_ZERO_POS
@@ -9,6 +10,25 @@ const (
 	STATUS_REG_RESERVED_POS
 	STATUS_REG_OVERFLOW_POS
 	STATUS_REG_NEGATIVE_POS
+
+	/*
+		CPUステータスレジスタ
+
+		7 6 5 4 3 2 1 0 ビット
+		------- -------
+		0 0 1 0 0 1 0 0 = 0x24 [初期値]
+
+		N V - B D I Z C
+		| | | | | | | |
+		| | | | | | | +- C: Carry (演算結果が繰上がったか)
+		| | | | | | +--- Z: Zero (演算結果が0か)
+		| | | | | +----- I: Interrupt Disable (割り込みが無効か)
+		| | | | +------- D: Decimal ※ファミコンでは無効
+		| | | +--------- B: Break (ソフト割り込みかどうか)
+		| | +----------- -: 未使用 (常に1)
+		| +------------- V: Overflow (演算結果が溢れたか)
+		+--------------- N: Negative (演算結果が負か)
+	*/
 )
 
 // MARK: CPUレジスタの定義
