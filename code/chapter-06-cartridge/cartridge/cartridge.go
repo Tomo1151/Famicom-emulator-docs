@@ -24,6 +24,7 @@ var (
 // MARK: Cartridgeの定義
 type Cartridge struct {
 	ROM    string // ROMデータのパス
+	name   string
 	mapper mappers.Mapper
 }
 
@@ -37,7 +38,7 @@ func NewCartridge(rom string) *Cartridge {
 // MARK: ROMファイルの読み込みメソッド
 func (c *Cartridge) Load() error {
 	ext := filepath.Ext(c.ROM)
-	name := strings.TrimSuffix(filepath.Base(c.ROM), ext)
+	c.name = strings.TrimSuffix(filepath.Base(c.ROM), ext)
 
 	// ROMファイルの読み込み
 	romFile, err := os.ReadFile(ROM_DATA_DIR + c.ROM)
@@ -51,7 +52,7 @@ func (c *Cartridge) Load() error {
 	}
 
 	// セーブデータファイルの読み込み
-	saveFile, err := os.ReadFile(SAVE_DATA_DIR + name + ".save")
+	saveFile, err := os.ReadFile(SAVE_DATA_DIR + c.name + ".save")
 	if err != nil {
 		saveFile = []uint8{}
 	}
@@ -70,9 +71,10 @@ func (c *Cartridge) Load() error {
 	// マッパの設定
 	mapperNum := (romFile[mappers.INES_CONTROL_BYTE_2_POS] & 0xF0) | (romFile[mappers.INES_CONTROL_BYTE_1_POS] >> 4)
 	mapper := c.selectMapper(mapperNum)
-	mapper.Init(name, romFile, saveFile)
+	mapper.Init(c.name, romFile, saveFile)
 	c.mapper = mapper
 
+	// c.DumpInfo(saveFile)
 	return nil
 }
 
@@ -91,11 +93,16 @@ func (c *Cartridge) Mapper() mappers.Mapper {
 
 // MARK: ROM情報の表示メソッド
 func (c *Cartridge) DumpInfo(saveFile []uint8) {
-	fmt.Println("Cartridge loaded")
+	fmt.Printf("Cartridge loaded: %s\n", c.name)
 	fmt.Printf("  Mapper      : %s\n", c.mapper.MapperInfo())
 	fmt.Printf("  PRG ROM Size: %d bytes\n", len(c.mapper.ProgramROM()))
 	fmt.Printf("  CHR ROM Size: %d bytes\n", len(c.mapper.CharacterROM()))
 	fmt.Printf("  CHR RAM     : %v\n", c.mapper.IsCharacterRAM())
+	if len(saveFile) != 0 {
+		fmt.Println("  Save data   : loaded")
+	} else {
+		fmt.Println("  Save data   : no")
+	}
 	var mirroring string
 	switch c.mapper.Mirroring() {
 	case mappers.MIRRORING_FOURSCREEN:
@@ -107,12 +114,5 @@ func (c *Cartridge) DumpInfo(saveFile []uint8) {
 	default:
 		mirroring = "Unknown"
 	}
-
-	fmt.Printf("  Mirroring: %s\n", mirroring)
-
-	if len(saveFile) != 0 {
-		fmt.Println("Save data loaded")
-	} else {
-		fmt.Println("No save data found")
-	}
+	fmt.Printf("  Mirroring   : %s\n", mirroring)
 }
