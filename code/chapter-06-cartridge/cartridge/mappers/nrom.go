@@ -10,10 +10,9 @@ type NROM struct {
 }
 
 // MARK: NROMのコンストラクタ
-func (r *NROM) Init(name string, romdata []uint8, savedata []uint8) {
+func (r *NROM) Init(romdata []uint8, savedata []uint8) {
 	programROM, characetrROM := ExtractROMs(romdata)
 
-	r.name = name
 	r.mirroring = InitMirroring(romdata)
 	r.programROM = programROM
 	r.characterROM = characetrROM

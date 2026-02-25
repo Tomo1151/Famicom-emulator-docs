@@ -52,14 +52,14 @@ type Mirroring uint8
 
 // MARK: Mapperの定義
 type Mapper interface {
-	Init(string, []uint8, []uint8)
+	Init(romdata []uint8, savedata []uint8)
 
-	ReadProgramRAM(uint16) uint8
-	ReadProgramROM(uint16) uint8
-	ReadCharacterROM(uint16) uint8
-	WriteProgramRAM(uint16, uint8)
-	WriteProgramROM(uint16, uint8)
-	WriteCharacterRAM(uint16, uint8)
+	ReadProgramRAM(address uint16) uint8
+	ReadProgramROM(address uint16) uint8
+	ReadCharacterROM(address uint16) uint8
+	WriteProgramRAM(address uint16, value uint8)
+	WriteProgramROM(address uint16, value uint8)
+	WriteCharacterRAM(address uint16, value uint8)
 
 	Mirroring() Mirroring
 	IsCharacterRAM() bool

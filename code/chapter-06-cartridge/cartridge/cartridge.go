@@ -71,7 +71,7 @@ func (c *Cartridge) Load() error {
 	// マッパの設定
 	mapperNum := (romFile[mappers.INES_CONTROL_BYTE_2_POS] & 0xF0) | (romFile[mappers.INES_CONTROL_BYTE_1_POS] >> 4)
 	mapper := c.selectMapper(mapperNum)
-	mapper.Init(c.name, romFile, saveFile)
+	mapper.Init(romFile, saveFile)
 	c.mapper = mapper
 
 	// c.DumpInfo(saveFile)
