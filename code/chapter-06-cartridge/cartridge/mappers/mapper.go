@@ -3,6 +3,7 @@ package mappers
 // MARK: 定数定義
 const (
 	PRG_ROM_PAGE_SIZE uint = 16 * 1024 // 16kB
+	PRG_RAM_PAGE_SIZE uint = 8 * 1024  // 16kB
 	CHR_ROM_PAGE_SIZE uint = 8 * 1024  // 8kB
 )
 
@@ -10,8 +11,8 @@ const (
 	INES_HEADER_SIZE  uint = 16  // iNESフォーマットのヘッダサイズ
 	INES_TRAINER_SIZE uint = 512 // iNESフォーマットのトレーナサイズ
 
-	INES_PRG_ROM_BANK_COUNT_POS uint = 4 // PRG ROMのバンク数
-	INES_CHR_ROM_BANK_COUNT_POS uint = 5 // CHR ROMのバンク数
+	INES_PRG_ROM_PAGE_COUNT_POS uint = 4 // PRG ROMのページ数
+	INES_CHR_ROM_PAGE_COUNT_POS uint = 5 // CHR ROMのページ数
 	INES_CONTROL_BYTE_1_POS     uint = 6 // コントロールフラグ1のビット位置
 	INES_CONTROL_BYTE_2_POS     uint = 7 // コントロールフラグ2のビット位置
 	INES_PRG_RAM_UNIT_SIZE_POS  uint = 8 // PRG RAMのサイズ
@@ -52,7 +53,7 @@ type Mirroring uint8
 
 // MARK: Mapperの定義
 type Mapper interface {
-	Init(romdata []uint8, savedata []uint8)
+	Init(romdata []uint8)
 
 	ReadProgramRAM(address uint16) uint8
 	ReadProgramROM(address uint16) uint8
@@ -93,13 +94,16 @@ func ExtractROMs(romdata []uint8) (programROM, characterROM []uint8) {
 	characterSize := characterROMSize(romdata)
 
 	programROM = romdata[programStart:(programStart + programSize)]
-	if characterSize == 0 {
-		characterROM = make([]uint8, CHR_ROM_PAGE_SIZE)
-	} else {
-		characterROM = romdata[characterStart:(characterStart + characterSize)]
-	}
+	characterROM = romdata[characterStart:(characterStart + characterSize)]
 
 	return programROM, characterROM
+}
+
+// MARK: ROMファイルからROG RAMとCHR RAMを生成する関数
+func GenerateRAMs(romdata []uint8) (programRAM, characterRAM []uint8) {
+	programRAM = make([]uint8, programRAMSize(romdata))
+	characterRAM = make([]uint8, CHR_ROM_PAGE_SIZE)
+	return programRAM, characterRAM
 }
 
 // MARK: PRG ROMの先頭アドレスを取得する関数
@@ -125,10 +129,15 @@ func characterROMStartAddress(romdata []uint8) (address uint) {
 
 // MARK: PRG ROMのサイズを取得する関数
 func programROMSize(romdata []uint8) (size uint) {
-	return uint(romdata[INES_PRG_ROM_BANK_COUNT_POS]) * PRG_ROM_PAGE_SIZE
+	return uint(romdata[INES_PRG_ROM_PAGE_COUNT_POS]) * PRG_ROM_PAGE_SIZE
+}
+
+// MARK: PRG RAMのサイズを取得する関数
+func programRAMSize(romdata []uint8) (size uint) {
+	return uint(romdata[INES_PRG_RAM_UNIT_SIZE_POS]) * PRG_RAM_PAGE_SIZE
 }
 
 // MARK: CHR ROMのサイズを取得する関数
 func characterROMSize(romdata []uint8) (size uint) {
-	return uint(romdata[INES_CHR_ROM_BANK_COUNT_POS]) * CHR_ROM_PAGE_SIZE
+	return uint(romdata[INES_CHR_ROM_PAGE_COUNT_POS]) * CHR_ROM_PAGE_SIZE
 }
