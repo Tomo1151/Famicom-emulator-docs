@@ -2,26 +2,34 @@ package mappers
 
 // MARK: NROMの定義
 type NROM struct {
-	name           string
 	mirroring      Mirroring
 	isCharacterRAM bool
-	programROM     []uint8
-	characterROM   []uint8
+
+	programROM   []uint8
+	programRAM   []uint8
+	characterROM []uint8
+	characterRAM []uint8
 }
 
 // MARK: NROMのコンストラクタ
-func (r *NROM) Init(romdata []uint8, savedata []uint8) {
-	programROM, characetrROM := ExtractROMs(romdata)
+func (r *NROM) Init(romdata []uint8) {
+	programROM, characterROM := ExtractROMs(romdata)
+	programRAM, characterRAM := GenerateRAMs(romdata)
 
 	r.mirroring = InitMirroring(romdata)
+	r.isCharacterRAM = (len(characterROM) == 0)
+
 	r.programROM = programROM
-	r.characterROM = characetrROM
+	r.programRAM = programRAM
+	r.characterROM = characterROM
+	r.characterRAM = characterRAM
 }
 
 // MARK: プログラムRAMの読み取りメソッド
 func (r *NROM) ReadProgramRAM(address uint16) uint8 {
-	// NOTE: NROMにはプログラムRAMがないため，オープンバスの挙動としてアドレスの上位バイトを返す
-	return uint8(address >> 8)
+	// NOTE: 公式のNROM基板では必要ないが，拡張されたFamily Basicなどの互換性を保つ
+	romAddress := address - 0x6000
+	return r.characterRAM[romAddress]
 }
 
 // MARK: プログラムROMの読み取りメソッド
@@ -38,12 +46,18 @@ func (r *NROM) ReadProgramROM(address uint16) uint8 {
 
 // MARK: キャラクタROMの読み取りメソッド
 func (r *NROM) ReadCharacterROM(address uint16) uint8 {
-	return r.characterROM[address]
+	if r.isCharacterRAM {
+		return r.characterROM[address]
+	} else {
+		return r.characterRAM[address]
+	}
 }
 
 // MARK: プログラムRAMの書き込みメソッド
 func (r *NROM) WriteProgramRAM(address uint16, value uint8) {
-	// NOTE: NROMにはプログラムRAM無し
+	// NOTE: 公式のNROM基板では必要ないが，拡張されたFamily Basicなどの互換性を保つ
+	romAddress := address - 0x6000
+	r.programRAM[romAddress] = value
 }
 
 // MARK: プログラムROMの書き込みメソッド
@@ -53,10 +67,9 @@ func (r *NROM) WriteProgramROM(address uint16, value uint8) {
 
 // MARK: キャラクタROMの書き込みメソッド
 func (r *NROM) WriteCharacterRAM(address uint16, value uint8) {
-	if !r.isCharacterRAM || int(address) < 0 || int(address) >= len(r.characterROM) {
-		return
+	if r.isCharacterRAM {
+		r.characterRAM[address] = value
 	}
-	r.characterROM[address] = value
 }
 
 // MARK: ミラーリングを取得するメソッド
