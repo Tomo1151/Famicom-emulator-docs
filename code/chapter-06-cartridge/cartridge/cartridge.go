@@ -37,24 +37,13 @@ func NewCartridge(rom string) *Cartridge {
 
 // MARK: ROMファイルの読み込みメソッド
 func (c *Cartridge) Load() error {
-	ext := filepath.Ext(c.ROM)
-	c.name = strings.TrimSuffix(filepath.Base(c.ROM), ext)
+	// ファイル名の設定
+	c.name = strings.TrimSuffix(filepath.Base(c.ROM), filepath.Ext(c.ROM))
 
 	// ROMファイルの読み込み
 	romFile, err := os.ReadFile(ROM_DATA_DIR + c.ROM)
 	if err != nil {
 		return fmt.Errorf("Couldn't load rom file: %s", c.ROM)
-	}
-
-	// セーブデータディレクトリの存在確認・作成
-	if _, err = os.Stat(SAVE_DATA_DIR); os.IsNotExist(err) {
-		os.Mkdir(SAVE_DATA_DIR, 0755)
-	}
-
-	// セーブデータファイルの読み込み
-	saveFile, err := os.ReadFile(SAVE_DATA_DIR + c.name + ".save")
-	if err != nil {
-		saveFile = []uint8{}
 	}
 
 	// NESタグの検証
@@ -70,19 +59,26 @@ func (c *Cartridge) Load() error {
 
 	// マッパの設定
 	mapperNum := (romFile[mappers.INES_CONTROL_BYTE_2_POS] & 0xF0) | (romFile[mappers.INES_CONTROL_BYTE_1_POS] >> 4)
-	mapper := c.selectMapper(mapperNum)
-	mapper.Init(romFile, saveFile)
+
+	mapper, err := c.selectMapper(mapperNum)
+	if err != nil {
+		return err
+	}
+
+	mapper.Init(romFile)
 	c.mapper = mapper
 
-	// c.DumpInfo(saveFile)
+	// c.DumpInfo()
 	return nil
 }
 
 // MARK: マッパの選択メソッド
-func (c *Cartridge) selectMapper(mapperNum uint8) mappers.Mapper {
+func (c *Cartridge) selectMapper(mapperNum uint8) (mappers.Mapper, error) {
 	switch mapperNum {
+	case 0x00:
+		return &mappers.NROM{}, nil
 	default:
-		return &mappers.NROM{}
+		return nil, fmt.Errorf("Unsupported mapper type: %02X", mapperNum)
 	}
 }
 
@@ -92,17 +88,12 @@ func (c *Cartridge) Mapper() mappers.Mapper {
 }
 
 // MARK: ROM情報の表示メソッド
-func (c *Cartridge) DumpInfo(saveFile []uint8) {
+func (c *Cartridge) DumpInfo() {
 	fmt.Printf("Cartridge loaded: %s\n", c.name)
 	fmt.Printf("  Mapper      : %s\n", c.mapper.MapperInfo())
 	fmt.Printf("  PRG ROM Size: %d bytes\n", len(c.mapper.ProgramROM()))
 	fmt.Printf("  CHR ROM Size: %d bytes\n", len(c.mapper.CharacterROM()))
 	fmt.Printf("  CHR RAM     : %v\n", c.mapper.IsCharacterRAM())
-	if len(saveFile) != 0 {
-		fmt.Println("  Save data   : loaded")
-	} else {
-		fmt.Println("  Save data   : no")
-	}
 	var mirroring string
 	switch c.mapper.Mirroring() {
 	case mappers.MIRRORING_FOURSCREEN:
