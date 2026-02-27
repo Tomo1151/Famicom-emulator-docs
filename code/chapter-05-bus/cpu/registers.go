@@ -10,7 +10,20 @@ const (
 	STATUS_REG_RESERVED_POS
 	STATUS_REG_OVERFLOW_POS
 	STATUS_REG_NEGATIVE_POS
+)
 
+// MARK: CPUレジスタの定義
+type registers struct {
+	A  uint8
+	X  uint8
+	Y  uint8
+	SP uint8
+	PC uint16
+	P  statusRegister
+}
+
+// MARK: CPU ステータスレジスタの定義
+type statusRegister struct {
 	/*
 		CPUステータスレジスタ
 
@@ -29,20 +42,7 @@ const (
 		| +------------- V: Overflow (演算結果が溢れたか)
 		+--------------- N: Negative (演算結果が負か)
 	*/
-)
 
-// MARK: CPUレジスタの定義
-type registers struct {
-	A  uint8
-	X  uint8
-	Y  uint8
-	SP uint8
-	PC uint16
-	P  statusRegister
-}
-
-// MARK: CPU ステータスレジスタの定義
-type statusRegister struct {
 	Negative    bool
 	Overflow    bool
 	Reserved    bool // 常にtrue
