@@ -61,7 +61,7 @@ type ControlRegister struct {
 	generateNMI              bool
 }
 
-// MARK: コントロールレジスタのコンストラクタ
+// コントロールレジスタのコンストラクタ
 func NewControlRegister() ControlRegister {
 	return ControlRegister{
 		nameTable1:               false,
@@ -73,6 +73,113 @@ func NewControlRegister() ControlRegister {
 		masterSlaveSelect:        false,
 		generateNMI:              false,
 	}
+}
+
+// VRAMアドレスの増分を取得するメソッド
+func (cr *ControlRegister) VRAMAddressIncrement() uint8 {
+	if !cr.vramAddressIncrement {
+		return 1
+	} else {
+		return 32
+	}
+}
+
+// ネームテーブルの基準アドレスを取得するメソッド
+func (cr *ControlRegister) BaseNameTableAddress() uint16 {
+	if cr.nameTable1 && cr.nameTable2 {
+		return 0x2C00
+	} else if cr.nameTable2 {
+		return 0x2800
+	} else if cr.nameTable1 {
+		return 0x2400
+	} else {
+		return 0x2000
+	}
+}
+
+// スプライトのパターンテーブルの基準アドレスを取得するメソッド
+func (cr *ControlRegister) SpritePatternTableAddress() uint16 {
+	if !cr.spritePatternAddress {
+		return 0x0000
+	} else {
+		return 0x1000
+	}
+}
+
+// 背景のパターンテーブルの基準アドレスを取得するメソッド
+func (cr *ControlRegister) BackgroundPatternTableAddress() uint16 {
+	if !cr.backgroundPatternAddress {
+		return 0x0000
+	} else {
+		return 0x1000
+	}
+}
+
+// スプライトのサイズを取得するメソッド
+func (cr *ControlRegister) SpriteSize() uint8 {
+	if !cr.spriteSize {
+		return 8
+	} else {
+		return 16
+	}
+}
+
+// PPUのマスター/スレーブを取得するメソッド
+func (cr *ControlRegister) MasterSlaveSelect() uint8 {
+	if !cr.masterSlaveSelect {
+		return 0
+	} else {
+		return 1
+	}
+}
+
+// VBlankNMIの状態を取得するメソッド
+func (cr *ControlRegister) GenerateNMI() bool {
+	return cr.generateNMI
+}
+
+// コントロールレジスタをuint8へ変換するメソッド
+func (cr *ControlRegister) ToByte() uint8 {
+	var value uint8 = 0x00
+
+	if cr.nameTable1 {
+		value |= 1 << CONTROL_REG_NAMETABLE1_POS
+	}
+	if cr.nameTable2 {
+		value |= 1 << CONTROL_REG_NAMETABLE2_POS
+	}
+	if cr.vramAddressIncrement {
+		value |= 1 << CONTROL_REG_VRAM_ADDR_INC_POS
+	}
+	if cr.spritePatternAddress {
+		value |= 1 << CONTROL_REG_SP_PATTERN_ADDR_POS
+	}
+	if cr.backgroundPatternAddress {
+		value |= 1 << CONTROL_REG_BG_PATTERN_ADDR_POS
+	}
+	if cr.spriteSize {
+		value |= 1 << CONTROL_REG_SP_SIZE_POS
+	}
+	if cr.masterSlaveSelect {
+		value |= 1 << CONTROL_REG_MASTER_SLAVE_POS
+	}
+	if cr.generateNMI {
+		value |= 1 << CONTROL_REG_GENERATE_NMI_POS
+	}
+
+	return value
+}
+
+// uint8の値をコントロールレジスタオブジェクトへ反映するメソッド
+func (cr *ControlRegister) SetFromByte(value uint8) {
+	cr.nameTable1 = (value & (1 << CONTROL_REG_NAMETABLE1_POS)) != 0
+	cr.nameTable2 = (value & (1 << CONTROL_REG_NAMETABLE2_POS)) != 0
+	cr.vramAddressIncrement = (value & (1 << CONTROL_REG_VRAM_ADDR_INC_POS)) != 0
+	cr.spritePatternAddress = (value & (1 << CONTROL_REG_SP_PATTERN_ADDR_POS)) != 0
+	cr.backgroundPatternAddress = (value & (1 << CONTROL_REG_BG_PATTERN_ADDR_POS)) != 0
+	cr.spriteSize = (value & (1 << CONTROL_REG_SP_SIZE_POS)) != 0
+	cr.masterSlaveSelect = (value & (1 << CONTROL_REG_MASTER_SLAVE_POS)) != 0
+	cr.generateNMI = (value & (1 << CONTROL_REG_GENERATE_NMI_POS)) != 0
 }
 
 // MARK: マスクレジスタ ($2001)
@@ -117,6 +224,50 @@ func NewMaskRegister() MaskRegister {
 	}
 }
 
+// マスクレジスタをuint8へ変換するメソッド
+func (mr *MaskRegister) ToByte() uint8 {
+	var value uint8 = 0x00
+
+	if mr.grayscale {
+		value |= 1 << MASK_REG_GRAYSCALE
+	}
+	if mr.leftmostBackgroundEnable {
+		value |= 1 << MASK_REG_LEFTMOST_BG_ENABLE_POS
+	}
+	if mr.leftmostSpriteEnable {
+		value |= 1 << MASK_REG_LEFTMOST_SP_ENABLE_POS
+	}
+	if mr.backgroundEnable {
+		value |= 1 << MASK_REG_BG_ENABLE_POS
+	}
+	if mr.spriteEnable {
+		value |= 1 << MASK_REG_SP_ENABLE_POS
+	}
+	if mr.emphasizeRed {
+		value |= 1 << MASK_REG_EMPHASIZE_RED_POS
+	}
+	if mr.emphasizeGreen {
+		value |= 1 << MASK_REG_EMPHASIZE_GREEN_POS
+	}
+	if mr.emphasizeBlue {
+		value |= 1 << MASK_REG_EMPHASIZE_BLUE_POS
+	}
+
+	return value
+}
+
+// uint8の値をマスクレジスタオブジェクトへ反映するメソッド
+func (mr *MaskRegister) SetFromByte(value uint8) {
+	mr.grayscale = (value & (1 << MASK_REG_GRAYSCALE)) != 0
+	mr.leftmostBackgroundEnable = (value & (1 << MASK_REG_LEFTMOST_BG_ENABLE_POS)) != 0
+	mr.leftmostSpriteEnable = (value & (1 << MASK_REG_LEFTMOST_SP_ENABLE_POS)) != 0
+	mr.backgroundEnable = (value & (1 << MASK_REG_BG_ENABLE_POS)) != 0
+	mr.spriteEnable = (value & (1 << MASK_REG_SP_ENABLE_POS)) != 0
+	mr.emphasizeRed = (value & (1 << MASK_REG_EMPHASIZE_RED_POS)) != 0
+	mr.emphasizeGreen = (value & (1 << MASK_REG_EMPHASIZE_GREEN_POS)) != 0
+	mr.emphasizeBlue = (value & (1 << MASK_REG_EMPHASIZE_BLUE_POS)) != 0
+}
+
 // MARK: ステータスレジスタ ($2002)
 type StatusRegister struct {
 	/*
@@ -127,9 +278,9 @@ type StatusRegister struct {
 		V S O - - - - -
 		| | |
 		| | |
-		| | +------- O: スプライトのオーバーフローフラグ
-		| +--------- S: スプライト 0 ヒットフラグ
-		+----------- V: VBlank フラグ
+		| | +----------- O: スプライトのオーバーフローフラグ
+		| +------------- S: スプライト 0 ヒットフラグ
+		+--------------- V: VBlank フラグ
 	*/
 
 	spriteOverflow bool
@@ -144,6 +295,60 @@ func NewStatusRegister() StatusRegister {
 		spriteZeroHit:  false,
 		vBlankFlag:     false,
 	}
+}
+
+// スプライトオーバーフローの状態を取得するメソッド
+func (sr *StatusRegister) SpriteOverflow() bool {
+	return sr.spriteOverflow
+}
+
+// スプライト0ヒットフラグの状態を取得するメソッド
+func (sr *StatusRegister) SpriteZeroHit() bool {
+	return sr.spriteZeroHit
+}
+
+// VBlankフラグの状態を取得するメソッド
+func (sr *StatusRegister) VBlank() bool {
+	return sr.vBlankFlag
+}
+
+// スプライトオーバーフローフラグの設定メソッド
+func (sr *StatusRegister) SetSpriteOverflow(status bool) {
+	sr.spriteOverflow = status
+}
+
+// スプライト0ヒットの設定メソッド
+func (sr *StatusRegister) SetSpriteZeroHit(status bool) {
+	sr.spriteZeroHit = status
+}
+
+// VBlankフラグの設定メソッド
+func (sr *StatusRegister) SetVBlankStatus(status bool) {
+	sr.vBlankFlag = status
+}
+
+// ステータスレジスタをuint8へ変換するメソッド
+func (sr *StatusRegister) ToByte() uint8 {
+	var value uint8 = 0x00
+
+	if sr.spriteOverflow {
+		value |= 1 << STATUS_REG_SPRITE_OVERFLOW
+	}
+	if sr.spriteZeroHit {
+		value |= 1 << STATUS_REG_SPRITE_ZERO_HIT
+	}
+	if sr.vBlankFlag {
+		value |= 1 << STATUS_REG_VBLANK_FLAG
+	}
+
+	return uint8(value)
+}
+
+// uint8の値をステータスレジスタオブジェクトへ反映するメソッド
+func (sr *StatusRegister) SetFromByte(value uint8) {
+	sr.spriteOverflow = (value & (1 << STATUS_REG_SPRITE_OVERFLOW)) != 0
+	sr.spriteZeroHit = (value & (1 << STATUS_REG_SPRITE_ZERO_HIT)) != 0
+	sr.vBlankFlag = (value & (1 << STATUS_REG_VBLANK_FLAG)) != 0
 }
 
 // MARK: アドレスレジスタ [V/Tレジスタ] (PPU内部)
@@ -177,6 +382,101 @@ func NewAddressRegister() AddressRegiseter {
 	}
 }
 
+// ネームテーブル選択の更新メソッド
+func (ar *AddressRegiseter) updateNameTable(value uint8) {
+	/*
+		T: ...GH.. ........ ← value: ......GH
+	*/
+
+	ar.nameTable = value & 0x03
+}
+
+// スクロール値の更新メソッド
+func (ar *AddressRegiseter) updateScroll(value uint8, latch bool) {
+	/*
+		1回目の書き込み (w = 0): Xスクロールのセット
+		T: ....... ...ABCDE ← value: ABCDEFGH
+
+		2回目の書き込み (w = 1): Yスクロールのセット
+		T: FGH..AB CDE..... ← value: ABCDEFGH
+	*/
+
+	if !latch {
+		// Xスクロールのセット
+		ar.coarseX = (value & 0xF8) >> 3
+	} else {
+		// Yスクロールのセット
+		ar.fineY = value & 0x07
+		ar.coarseY = (value & 0xF8) >> 3
+	}
+}
+
+// VRAMアドレスの更新メソッド ($2006)
+func (ar *AddressRegiseter) updateAddress(value uint8, latch bool) {
+	/*
+		1回目の書き込み (w = 0): 上位バイトのセット
+		   yyyNNYY YYYXXXXX
+			 ------- --------
+		T: .CDEFGH ........ ← value: ..CDEFGH
+
+		2回目の書き込み (w = 1): 下位バイトのセット
+			 yyyNNYY YYYXXXXX
+			 ------- --------
+		T: ....... ABCDEFGH ← value: ABCDEFGH
+	*/
+
+	if !latch {
+		// 上位バイトの書き込み
+		ar.fineY = (value >> 4) & 0x03                     // ABCD_EFGH → 00CD (14ビット目は常にクリアされる)
+		ar.nameTable = (value >> 2) & 0x03                 // ABCD_EFGH → 00EF
+		ar.coarseY = (value&0x03)<<3 | (ar.coarseY & 0x07) // Yの上位2バイトのみを更新
+	} else {
+		// 下位バイトの書き込み
+		ar.coarseY = (ar.coarseY & 0x18) | ((value >> 5) & 0x07)
+		ar.coarseX = value & 0x1F
+	}
+}
+
+// アドレスレジスタ間で全ての値をコピーするメソッド
+func (ar *AddressRegiseter) copyAllBitsTo(target *AddressRegiseter) {
+	target.fineY = ar.fineY
+	target.nameTable = ar.nameTable
+	target.coarseX = ar.coarseX
+	target.coarseY = ar.coarseY
+}
+
+// アドレスレジスタ間でX座標の値をコピーするメソッド
+func (ar *AddressRegiseter) copyHorizoontalBitsTo(target *AddressRegiseter) {
+	target.nameTable = (target.nameTable & 0b10) | (ar.nameTable & 0b01)
+	target.coarseX = ar.coarseX
+}
+
+// アドレスレジスタ間でY座標の値をコピーするメソッド
+func (ar *AddressRegiseter) copyVerticalBitsTo(target *AddressRegiseter) {
+	target.fineY = ar.fineY
+	target.nameTable = (target.nameTable & 0b01) | (ar.nameTable & 0b10)
+	target.coarseY = ar.coarseY
+}
+
+// アドレスレジスタをuint16へ変換するメソッド
+func (ar *AddressRegiseter) ToByte() uint16 {
+	var value uint16 = 0x00
+	value |= uint16(ar.fineY) << 12
+	value |= uint16(ar.nameTable) << 10
+	value |= uint16(ar.coarseY) << 5
+	value |= uint16(ar.coarseX)
+
+	return value
+}
+
+// uint16からアドレスレジスタオブジェクトに変換するメソッド
+func (ar *AddressRegiseter) SetFromWord(value uint16) {
+	ar.fineY = uint8((value >> 12) & 0x07)
+	ar.nameTable = uint8((value >> 10) & 0x03)
+	ar.coarseY = uint8((value >> 5) & 0x1F)
+	ar.coarseX = uint8(value & 0x1F)
+}
+
 // MARK: Xレジスタ (PPU内部)
 type XRegister struct {
 	/*
@@ -199,6 +499,19 @@ func NewXRegister() XRegister {
 	}
 }
 
+// Xレジスタの更新メソッド
+func (xr *XRegister) update(value uint8) {
+	/*
+		1回目の書き込み (w = 0): X座標の下位3ビットをセット
+		X: ....... .....FGH ← value: ABCDEFGH
+
+		2回目の書き込み (w = 1): 何もしない
+	*/
+
+	xr.fineX &= ^uint8(0x07) // 元の値をクリア
+	xr.fineX |= value & 0x07 // 下位3bitに書き込み
+}
+
 // MARK: Wレジスタ (PPU内部)
 type WRegister struct {
 	/*
@@ -219,4 +532,14 @@ func NewWRegister() WRegister {
 	return WRegister{
 		latch: false,
 	}
+}
+
+// Wレジスタの反転メソッド
+func (wr *WRegister) toggle() {
+	wr.latch = !wr.latch
+}
+
+// Wレジスタの初期化メソッド
+func (wr *WRegister) reset() {
+	wr.latch = false
 }
