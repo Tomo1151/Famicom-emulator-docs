@@ -323,7 +323,7 @@ func (sr *StatusRegister) SetSpriteZeroHit(status bool) {
 }
 
 // VBlankフラグの設定メソッド
-func (sr *StatusRegister) SetVBlankStatus(status bool) {
+func (sr *StatusRegister) SetVBlank(status bool) {
 	sr.vBlankFlag = status
 }
 
@@ -437,6 +437,36 @@ func (ar *AddressRegiseter) updateAddress(value uint8, latch bool) {
 	}
 }
 
+// 水平方向のVRAMアドレスをインクリメントするメソッド
+func (ar *AddressRegiseter) incrementHorizontal() {
+	if ar.coarseX < 31 {
+		ar.coarseX++
+	} else {
+		// 31を超えたら0に戻し、水平ネームテーブルを切り替える (ビット0を反転)
+		ar.coarseX = 0
+		ar.nameTable ^= 0b01
+	}
+}
+
+// 垂直方向のVRAMアドレスをインクリメントするメソッド
+func (ar *AddressRegiseter) incrementVertical() {
+	if ar.fineY < 7 {
+		ar.fineY++
+	} else {
+		// 7を超えたら0に戻し、Coarse Yをインクリメント
+		ar.fineY = 0
+		ar.coarseY++
+
+		switch ar.coarseY {
+		case 32: // メモリの端
+			ar.coarseY = 0
+		case 30: // 画面の端
+			ar.coarseY = 0
+			ar.nameTable ^= 0b10
+		}
+	}
+}
+
 // アドレスレジスタ間で全ての値をコピーするメソッド
 func (ar *AddressRegiseter) copyAllBitsTo(target *AddressRegiseter) {
 	target.fineY = ar.fineY
@@ -446,7 +476,7 @@ func (ar *AddressRegiseter) copyAllBitsTo(target *AddressRegiseter) {
 }
 
 // アドレスレジスタ間でX座標の値をコピーするメソッド
-func (ar *AddressRegiseter) copyHorizoontalBitsTo(target *AddressRegiseter) {
+func (ar *AddressRegiseter) copyHorizontalBitsTo(target *AddressRegiseter) {
 	target.nameTable = (target.nameTable & 0b10) | (ar.nameTable & 0b01)
 	target.coarseX = ar.coarseX
 }
