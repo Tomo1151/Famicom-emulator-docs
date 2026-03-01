@@ -8,7 +8,8 @@ import (
 const (
 	PPU_VRAM_SIZE          = 2 * 1024 // 1024kB
 	PPU_PALETTE_TABLE_SIZE = 32
-	PPU_OAM_SIZE           = 4 * 64
+	PPU_PRIMARY_OAM_SIZE   = 4 * 64 // 64スプライト
+	PPU_SECONDARY_OAM_SIZE = 4 * 8  // 8スプライト
 
 	PPU_MEMORY_ADDRESS_MASK    = 0x3FFF // 14ビット
 	PPU_NAMETABLE_ADDRESS_MASK = 0x2FFF
@@ -34,7 +35,8 @@ const (
 // MARK: PPUの定義
 type PPU struct {
 	vram         [PPU_VRAM_SIZE]uint8          // Video RAM
-	oam          [PPU_OAM_SIZE]uint8           // Object Attribute Memory
+	oam          [PPU_PRIMARY_OAM_SIZE]uint8   // Object Attribute Memory
+	secondaryOAM [PPU_SECONDARY_OAM_SIZE]uint8 // Secondary OAM
 	paletteTable [PPU_PALETTE_TABLE_SIZE]uint8 // Palette Table
 
 	// IOレジスタ
@@ -50,8 +52,9 @@ type PPU struct {
 
 	mapper mappers.Mapper // カートリッジ (CHR ROM) への参照
 
-	cycles     uint
-	scanline   uint16
+	dot      uint
+	scanline uint
+
 	oamAddress uint8
 	dataBuffer uint8
 
@@ -69,13 +72,94 @@ func NewPPU(mapper mappers.Mapper) PPU {
 		x:          NewXRegister(),
 		w:          NewWRegister(),
 		mapper:     mapper,
-		cycles:     0,
+		dot:        0,
 		scanline:   0,
 		oamAddress: 0x00,
 		dataBuffer: 0x00,
 	}
 
 	return ppu
+}
+
+// MARK: PPUクロックの更新
+func (p *PPU) Tick(cycles uint8) {
+	for range cycles {
+		// 可視スキャンラインではセカンダリOAMのクリアと次ラインで使用するスプライトの評価を行う
+		if SCANLINE_START <= p.scanline && p.scanline < SCANLINE_POSTRENDER {
+			if p.dot == 1 {
+				p.clearSecondaryOAM()
+			}
+			if 65 <= p.dot && p.dot <= 256 {
+				p.evaluateNextLineSprite()
+			}
+
+			// 可視領域と321ドット以降では8サイクル毎にVレジスタの水平アドレスをインクリメントする
+			if (0 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 340) {
+				if p.dot%TILE_SIZE == 0 {
+					p.v.incrementHorizontal()
+				}
+			}
+
+			// 可視領域の最終ドットで垂直アドレスをインクリメントする
+			if p.dot == 256 {
+				p.v.incrementVertical()
+			}
+
+			// 可視領域外最初のドットでVレジスタの水平アドレスをTレジスタにコピーする
+			if p.dot == 257 {
+				p.v.copyHorizontalBitsTo(&p.t)
+			}
+		}
+
+		// ポストレンダーラインの次のラインではVBlankフラグがセットされる
+		if p.scanline == SCANLINE_VBLANK {
+			if p.dot == 1 {
+				p.status.SetVBlank(true)
+				if p.control.GenerateNMI() {
+					p.nmi = true
+				}
+			}
+		}
+
+		// プリレンダーラインでは各種フラグがクリアされ，スプライトが評価される
+		if p.scanline == SCANLINE_PRERENDER {
+			if p.dot == 1 {
+				p.status.SetVBlank(false)
+				p.status.SetSpriteZeroHit(false)
+				p.status.SetSpriteOverflow(false)
+				p.clearSecondaryOAM()
+			}
+
+			// 可視領域と同様にスプライトを評価
+			if 65 <= p.dot && p.dot <= 256 {
+				p.evaluateNextLineSprite()
+			}
+
+			// 可視領域と321ドット以降では8サイクル毎にVレジスタの水平アドレスをインクリメントする
+			if (0 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 340) {
+				if p.dot%TILE_SIZE == 0 {
+					p.v.incrementHorizontal()
+				}
+			}
+
+			// 280 ~ 304ドットでは毎回Vレジスタの垂直アドレスをTレジスタにコピーする
+			if 280 <= p.dot && p.dot <= 304 {
+				p.v.copyVerticalBitsTo(&p.t)
+			}
+
+			// スキャンラインを0に戻す
+			if p.dot == SCANLINE_END {
+				p.scanline = 0
+			}
+		}
+
+		// サイクルとスキャンラインを進める
+		p.dot++
+		if p.dot >= SCANLINE_END {
+			p.dot = 0
+			p.scanline++
+		}
+	}
 }
 
 // MARK: PPUメモリマップの読み取り
@@ -126,7 +210,7 @@ func (p *PPU) ReadPPUMask() uint8 {
 // MARK: PPUステータスレジスタの読み取り (CPU: $2002)
 func (p *PPU) ReadPPUStatus() uint8 {
 	status := p.status.ToByte()
-	p.status.SetVBlankStatus(false) // 読み取りでVBlankフラグとラッチがクリアされる
+	p.status.SetVBlank(false) // 読み取りでVBlankフラグとラッチがクリアされる
 	p.w.reset()
 	return status
 }
@@ -288,6 +372,18 @@ func (p *PPU) incrementVRAMAddress() {
 	step := uint16(p.control.VRAMAddressIncrement())
 	address := (p.v.ToByte() + step)
 	p.v.SetFromWord(address & PPU_MEMORY_ADDRESS_MASK)
+}
+
+// MARK: セカンダリOAMのクリア
+func (p *PPU) clearSecondaryOAM() {
+	for i := range p.secondaryOAM {
+		p.secondaryOAM[i] = 0xFF
+	}
+}
+
+// MARK: 次のスキャンラインで描画するスプライトの評価
+func (p *PPU) evaluateNextLineSprite() {
+
 }
 
 // MARK: NMIの状態を取得するメソッド
