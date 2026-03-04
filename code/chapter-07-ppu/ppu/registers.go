@@ -1,5 +1,9 @@
 package ppu
 
+import (
+	"math/bits"
+)
+
 // MARK: 定数定義
 const (
 	CONTROL_REG_NAMETABLE1_POS uint8 = iota
@@ -572,4 +576,121 @@ func (wr *WRegister) toggle() {
 // Wレジスタの初期化メソッド
 func (wr *WRegister) reset() {
 	wr.latch = false
+}
+
+// MARK: 背景用ラッチ
+type BackgroundLatch struct {
+	nameTable    uint8 // 描画する背景タイルの番号
+	attribute    uint8 // 背景の属性情報
+	patternLower uint8 // 背景タイルのビットプレーン 0
+	patternUpper uint8 // 背景タイルのビットプレーン 1
+}
+
+func NewBackgroundLatch() BackgroundLatch {
+	return BackgroundLatch{
+		nameTable:    0x00,
+		attribute:    0x00,
+		patternLower: 0x00,
+		patternUpper: 0x00,
+	}
+}
+
+// MARK: スプライト用ラッチ
+type SpriteLatch struct {
+	patternLower uint8 // スプライトタイルのビットプレーン 0
+	patternUpper uint8 // スプライトタイルのビットプレーン 1
+}
+
+func NewSpriteLatch() SpriteLatch {
+	return SpriteLatch{
+		patternLower: 0x00,
+		patternUpper: 0x00,
+	}
+}
+
+// MARK: 背景シフトレジスタの定義
+type BackgroundShiftRegister struct {
+	attributeLower uint16 // 属性情報の 0 ビット目
+	attributeUpper uint16 // 属性情報の 1 ビット目
+	patternLower   uint16 // 背景タイルのビットプレーン 0
+	patternUpper   uint16 // 背景タイルのビットプレーン 1
+}
+
+func NewBackgroundShiftRegister() BackgroundShiftRegister {
+	return BackgroundShiftRegister{
+		attributeLower: 0x0000,
+		attributeUpper: 0x0000,
+		patternLower:   0x0000,
+		patternUpper:   0x0000,
+	}
+}
+
+func (sr *BackgroundShiftRegister) shift() {
+	sr.attributeLower <<= 1
+	sr.attributeUpper <<= 1
+	sr.patternLower <<= 1
+	sr.patternUpper <<= 1
+}
+
+func (sr *BackgroundShiftRegister) load(latch *BackgroundLatch) {
+	// 新しい値を書き込むために下位バイトをクリア
+	sr.patternLower &= 0xFF00
+	sr.patternUpper &= 0xFF00
+	sr.attributeLower &= 0xFF00
+	sr.attributeUpper &= 0xFF00
+
+	// 新しい値を下位バイトに書き込み
+	// ビットプレーン
+	sr.patternLower |= uint16(latch.patternLower)
+	sr.patternUpper |= uint16(latch.patternUpper)
+
+	// 属性(パレット)情報
+	// 次のフェッチタイミングまでの分(8ピクセル分)書き込む
+	if latch.attribute&0b01 != 0 {
+		sr.attributeLower |= 0xFF
+	}
+	if latch.attribute&0b10 != 0 {
+		sr.attributeUpper |= 0xFF
+	}
+}
+
+// MARK: スプライトシフトレジスタの定義
+type SpriteShiftRegister struct {
+	attributes   uint8 // スプライト属性
+	patternLower uint8 // スプライトタイルのビットプレーン 0
+	patternUpper uint8 // スプライトタイルのビットプレーン 1
+	xDistance    uint8 // スクロール値
+}
+
+func NewSpriteShiftRegister() SpriteShiftRegister {
+	return SpriteShiftRegister{
+		attributes:   0x00,
+		patternLower: 0x00,
+		patternUpper: 0x00,
+		xDistance:    0x00,
+	}
+}
+
+func (sr *SpriteShiftRegister) shift() {
+	sr.patternLower <<= 1
+	sr.patternUpper <<= 1
+}
+
+func (sr *SpriteShiftRegister) load(latch *SpriteLatch, flipH bool) {
+	patternLower := latch.patternLower
+	patternUpper := latch.patternUpper
+	if flipH {
+		// 水平反転
+		patternLower = bits.Reverse8(patternLower)
+		patternUpper = bits.Reverse8(patternUpper)
+	}
+	sr.patternLower = patternLower
+	sr.patternUpper = patternUpper
+}
+
+func (sr *SpriteShiftRegister) reset() {
+	sr.attributes = 0x00
+	sr.patternLower = 0x00
+	sr.patternUpper = 0x00
+	sr.xDistance = 0x00
 }

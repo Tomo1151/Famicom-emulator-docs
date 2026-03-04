@@ -29,7 +29,7 @@ func (r *NROM) Init(romdata []uint8) {
 func (r *NROM) ReadProgramRAM(address uint16) uint8 {
 	// NOTE: 公式のNROM基板では必要ないが，拡張されたFamily Basicなどの互換性を保つ
 	romAddress := address - 0x6000
-	return r.characterRAM[romAddress]
+	return r.programRAM[romAddress]
 }
 
 // MARK: プログラムROMの読み取りメソッド
@@ -47,9 +47,9 @@ func (r *NROM) ReadProgramROM(address uint16) uint8 {
 // MARK: キャラクタROMの読み取りメソッド
 func (r *NROM) ReadCharacterROM(address uint16) uint8 {
 	if r.isCharacterRAM {
-		return r.characterROM[address]
-	} else {
 		return r.characterRAM[address]
+	} else {
+		return r.characterROM[address]
 	}
 }
 

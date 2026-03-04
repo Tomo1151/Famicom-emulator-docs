@@ -8,10 +8,10 @@ import (
 
 // MARK: CPUの定義
 type CPU struct {
-	registers registers
-	bus       bus.Bus
-
+	registers      registers
+	bus            bus.Bus
 	instructionSet instructionSet
+	cycles         uint
 }
 
 // MARK: CPUのコンストラクタ
@@ -28,9 +28,10 @@ func NewCPU(bus bus.Bus) *CPU {
 		PC: cpu.bus.ReadWordFrom(0xFFFC),
 		P:  NewStatusRegister(),
 	}
+	cpu.cycles = 0
 
 	// FIXME: nestest用のエントリポイント
-	cpu.registers.PC = 0xC000
+	// cpu.registers.PC = 0xC000
 	return cpu
 }
 
@@ -47,12 +48,37 @@ func (c *CPU) Step() {
 	instruction.Handler(instruction.AddressingMode)
 
 	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 - 1）
-	if instruction.Mnemonic == "JMP" ||
+	isJump := instruction.Mnemonic == "JMP" ||
 		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
-		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
-		return
+		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK"
+
+	if !isJump {
+		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
-	c.registers.PC += uint16(instruction.Bytes - 1)
+
+	// 各コンポーネントのクロック
+	c.cycles += uint(instruction.Cycles)
+	c.bus.Tick(uint(instruction.Cycles))
+
+	if c.bus.NMI() {
+		c.interrupt(NMI)
+	}
+}
+
+// MARK: NMIのハンドリング
+func (c *CPU) interrupt(interrupt Interrupt) {
+	// 現在のPCを退避
+	c.pushWord(c.registers.PC)
+
+	// ステータスレジスタをスタックにプッシュ
+	status := c.registers.P
+	status.Break = interrupt.BFlagMask&0b0001_0000 != 0
+	status.Reserved = interrupt.BFlagMask&0b0010_0000 != 0
+	c.pushByte(status.ToByte())
+	c.registers.P.IrqDisabled = true
+
+	c.bus.Tick(uint(interrupt.CPUCycles))
+	c.registers.PC = c.bus.ReadWordFrom(interrupt.VectorAddress)
 }
 
 // MARK: 実行メソッド
@@ -883,30 +909,53 @@ func (c *CPU) Trace() string {
 		if instruction.Mnemonic == "JMP" || instruction.Mnemonic == "JSR" {
 			operandString = fmt.Sprintf("$%04X", effectiveAddress)
 		} else {
-			operandString = fmt.Sprintf(
-				"$%04X = %02X",
-				effectiveAddress,
-				c.bus.ReadByteFrom(effectiveAddress),
-			)
+			if 0x2000 <= effectiveAddress && effectiveAddress <= 0x3FFF {
+				operandString = fmt.Sprintf(
+					"$%04X = PPU IO",
+					effectiveAddress,
+				)
+			} else {
+				operandString = fmt.Sprintf(
+					"$%04X = %02X",
+					effectiveAddress,
+					c.bus.ReadByteFrom(effectiveAddress),
+				)
+			}
 		}
 	case AbsoluteXIndexed:
 		base := uint16(operand1) | (uint16(operand2) << 8)
 		effectiveAddress = base + uint16(c.registers.X)
-		operandString = fmt.Sprintf(
-			"$%04X,X @ %04X = %02X",
-			base,
-			effectiveAddress,
-			c.bus.ReadByteFrom(effectiveAddress),
-		)
+		if 0x2000 <= effectiveAddress && effectiveAddress <= 0x3FFF {
+			operandString = fmt.Sprintf(
+				"$%04X,X @ %04X = PPU IO",
+				base,
+				effectiveAddress,
+			)
+		} else {
+			operandString = fmt.Sprintf(
+				"$%04X,X @ %04X = %02X",
+				base,
+				effectiveAddress,
+				c.bus.ReadByteFrom(effectiveAddress),
+			)
+		}
 	case AbsoluteYIndexed:
 		base := uint16(operand1) | (uint16(operand2) << 8)
 		effectiveAddress = base + uint16(c.registers.Y)
-		operandString = fmt.Sprintf(
-			"$%04X,Y @ %04X = %02X",
-			base,
-			effectiveAddress,
-			c.bus.ReadByteFrom(effectiveAddress),
-		)
+		if 0x2000 <= effectiveAddress && effectiveAddress <= 0x3FFF {
+			operandString = fmt.Sprintf(
+				"$%04X,Y @ %04X = PPU IO",
+				base,
+				effectiveAddress,
+			)
+		} else {
+			operandString = fmt.Sprintf(
+				"$%04X,Y @ %04X = %02X",
+				base,
+				effectiveAddress,
+				c.bus.ReadByteFrom(effectiveAddress),
+			)
+		}
 	case Indirect:
 		ptr := uint16(operand1) | (uint16(operand2) << 8)
 		var target uint16
@@ -962,7 +1011,7 @@ func (c *CPU) Trace() string {
 
 	// 行全体の組み立て
 	return fmt.Sprintf(
-		"%04X  %s %4s %-28s %s",
+		"%04X  %s %4s %-27s %s",
 		base,
 		hexDump,
 		instruction.Mnemonic,
