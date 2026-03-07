@@ -660,6 +660,7 @@ type SpriteShiftRegister struct {
 	patternLower uint8 // スプライトタイルのビットプレーン 0
 	patternUpper uint8 // スプライトタイルのビットプレーン 1
 	xDistance    uint8 // スクロール値
+	isSpriteZero bool  // このシフタがスプライト0のものかどうか
 }
 
 func NewSpriteShiftRegister() SpriteShiftRegister {
@@ -668,6 +669,7 @@ func NewSpriteShiftRegister() SpriteShiftRegister {
 		patternLower: 0x00,
 		patternUpper: 0x00,
 		xDistance:    0x00,
+		isSpriteZero: false,
 	}
 }
 
@@ -693,4 +695,5 @@ func (sr *SpriteShiftRegister) reset() {
 	sr.patternLower = 0x00
 	sr.patternUpper = 0x00
 	sr.xDistance = 0x00
+	sr.isSpriteZero = false
 }

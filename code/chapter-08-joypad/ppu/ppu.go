@@ -66,22 +66,20 @@ type PPU struct {
 	mapper mappers.Mapper // カートリッジ (CHR ROM) への参照
 	canvas *Canvas        // 描画キャンバスの参照
 
-	dot                uint
-	scanline           uint
-	oamAddress         uint8
-	dataBuffer         uint8
-	spriteCount        uint
-	spriteZeroIndex    uint
-	spriteZeroHitDelay bool
-
-	nmi bool
+	dot             uint
+	scanline        uint
+	oamAddress      uint8
+	dataBuffer      uint8
+	spriteCount     uint
+	spriteZeroIndex uint
+	nmi             bool
 
 	frame uint64
 }
 
 // MARK: PPUのコンストラクタ
 func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
-	ppu := PPU{
+	return PPU{
 		control:         NewControlRegister(),
 		mask:            NewMaskRegister(),
 		status:          NewStatusRegister(),
@@ -95,171 +93,32 @@ func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
 		scanline:        0,
 		oamAddress:      0x00,
 		dataBuffer:      0x00,
+		spriteCount:     0,
 		spriteZeroIndex: SPRITE_ZERO_NOT_FOUND,
+		nmi:             false,
 		frame:           0,
 	}
-
-	return ppu
 }
 
 // MARK: PPUクロックの更新
 func (p *PPU) Tick(cycles uint) {
 	for range cycles {
+		// 描画設定を取得
 		isRenderingEnabled := p.mask.backgroundEnable || p.mask.spriteEnable
 
-		// スプライト0ヒットは遅延する
-		if p.spriteZeroHitDelay {
-			p.status.SetSpriteZeroHit(true)
-			p.spriteZeroHitDelay = false
+		// スキャンライン位置によって処理
+		switch {
+		case SCANLINE_START <= p.scanline && p.scanline < SCANLINE_POSTRENDER:
+			p.tickVisibleScanline(isRenderingEnabled)
+		case p.scanline == SCANLINE_VBLANK:
+			p.tickVBlankScanline()
+		case p.scanline == SCANLINE_PRERENDER:
+			p.tickPreRenderScanline(isRenderingEnabled)
 		}
 
-		// 可視スキャンラインではセカンダリOAMのクリアと次ラインで使用するスプライトの評価を行う
-		if SCANLINE_START <= p.scanline && p.scanline < SCANLINE_POSTRENDER {
-			if p.dot == 1 {
-				p.clearSecondaryOAM()
-			}
-			if 65 <= p.dot && p.dot <= 256 {
-				p.evaluateNextLineSprite()
-			}
-
-			if isRenderingEnabled {
-
-				// シフトレジスタから1ピクセル分を塗る
-				if 1 <= p.dot && p.dot <= 256 {
-					p.renderPixel()
-
-					// スプライト用シフトレジスタをシフト
-					for i := range p.spriteShifts {
-						if p.spriteShifts[i].xDistance > 0 {
-							// ドットが進む分X距離を更新
-							p.spriteShifts[i].xDistance--
-						} else {
-							// 表示座標であればシフト
-							p.spriteShifts[i].shift()
-						}
-					}
-				}
-
-				// 可視領域と321ドット以降では8サイクル毎にVレジスタの水平アドレスをインクリメントする
-				if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
-					// 背景用シフトレジスタをシフト
-					p.backgroundShift.shift()
-
-					// 背景のフェッチ
-					p.fetchBackground()
-
-					if p.dot%TILE_SIZE == 0 {
-						p.v.incrementHorizontal()
-					}
-				}
-
-				// 可視領域の最終ドットで垂直アドレスをインクリメントする
-				if p.dot == 256 {
-					p.v.incrementVertical()
-				}
-
-				// 可視領域外最初のドットでVレジスタの水平アドレスをTレジスタにコピーする
-				if p.dot == 257 {
-					p.t.copyHorizontalBitsTo(&p.v)
-				}
-
-				// スプライトのフェッチ
-				if 257 <= p.dot && p.dot <= 320 {
-					spriteIndex := (p.dot - 257) / 8 // 期間を均等に分割
-					p.fetchSprite(spriteIndex)
-				}
-			}
-		}
-
-		// ポストレンダーラインの次のラインではVBlankフラグがセットされる
-		if p.scanline == SCANLINE_VBLANK {
-			if p.dot == 1 {
-				p.status.SetVBlank(true)
-				if p.control.GenerateNMI() {
-					p.nmi = true
-				}
-			}
-		}
-
-		// プリレンダーラインでは各種フラグがクリアされ，スプライトが評価される
-		if p.scanline == SCANLINE_PRERENDER {
-			if p.dot == 1 {
-				p.status.SetVBlank(false)
-				p.status.SetSpriteZeroHit(false)
-				p.status.SetSpriteOverflow(false)
-				p.spriteZeroHitDelay = false
-				p.clearSecondaryOAM()
-			}
-
-			// 可視領域と同様にスプライトを評価
-			if 65 <= p.dot && p.dot <= 256 {
-				p.evaluateNextLineSprite()
-			}
-
-			if isRenderingEnabled {
-				// 可視領域と321ドット以降では8サイクル毎にVレジスタの水平アドレスをインクリメントする
-				if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
-					// 背景用シフトレジスタをシフト
-					p.backgroundShift.shift()
-
-					p.fetchBackground()
-
-					if p.dot%TILE_SIZE == 0 {
-						p.v.incrementHorizontal()
-					}
-				}
-
-				// 256ドット目で垂直アドレスをインクリメント
-				if p.dot == 256 {
-					p.v.incrementVertical()
-				}
-
-				// 257ドット目で水平アドレスをVレジスタからTレジスタにコピー
-				if p.dot == 257 {
-					p.t.copyHorizontalBitsTo(&p.v)
-				}
-			}
-
-			// スプライトのフェッチ
-			if 257 <= p.dot && p.dot <= 320 {
-				spriteIndex := (p.dot - 257) / 8 // 期間を均等に分割
-				p.fetchSprite(spriteIndex)
-			}
-
-			// 280 ~ 304ドットでは毎回Vレジスタの垂直アドレスをTレジスタにコピーする
-			if isRenderingEnabled && (280 <= p.dot && p.dot <= 304) {
-				p.t.copyVerticalBitsTo(&p.v)
-			}
-		}
-
-		// サイクルとスキャンラインを進める
-		p.dot++
-		if p.dot > SCANLINE_END {
-			p.dot = 0
-			p.scanline++
-
-			if p.scanline > SCANLINE_PRERENDER {
-				// スキャンラインを0に戻し，フレームを進める
-				p.scanline = 0
-				p.frame++
-			}
-		}
+		// サイクル, スキャンラインを進める
+		p.incrementCycles()
 	}
-}
-
-// MARK: PPUメモリマップの読み取り
-func (p *PPU) ReadPPUData() uint8 {
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
-	p.incrementVRAMAddress()
-
-	value := p.dataBuffer
-	p.dataBuffer = p.ReadPPUVRAM(address)
-
-	if 0x3F00 <= address && address <= 0x3FFF {
-		value = p.ReadPPUVRAM(address)
-	}
-
-	return value
 }
 
 // MARK: PPUコントロールレジスタの読み取り (CPU: $2000)
@@ -274,7 +133,6 @@ func (p *PPU) ReadPPUMask() uint8 {
 
 // MARK: PPUステータスレジスタの読み取り (CPU: $2002)
 func (p *PPU) ReadPPUStatus() uint8 {
-	// fmt.Printf("PPU Scanline: %d, Dot: %d\n", p.scanline, p.dot)
 	status := p.status.ToByte()
 	p.status.SetVBlank(false) // 読み取りでVBlankフラグとラッチがクリアされる
 	p.w.reset()
@@ -284,6 +142,23 @@ func (p *PPU) ReadPPUStatus() uint8 {
 // MARK: OAMデータの読み取り (CPU: $2004)
 func (p *PPU) ReadOAMData() uint8 {
 	return p.oam[p.oamAddress]
+}
+
+// MARK: PPUデータの読み取り (CPU: $2007)
+func (p *PPU) ReadPPUData() uint8 {
+	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	p.incrementVRAMAddress()
+
+	// CPUからの読み取りは内部バッファにより一回分遅延する
+	value := p.dataBuffer
+	p.dataBuffer = p.ReadPPUVRAM(address)
+
+	// パレットテーブルのみ遅延無しで読み取り
+	if 0x3F00 <= address && address <= 0x3FFF {
+		value = p.ReadPPUVRAM(address)
+	}
+
+	return value
 }
 
 // MARK: PPUメモリマップの読み取り
@@ -304,7 +179,7 @@ func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
 	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
 		return p.mapper.ReadCharacterROM(address)
 	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
-		vramAddress := p.mirroredVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
+		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
 		return p.vram[vramAddress]
 	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
 		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
@@ -314,41 +189,6 @@ func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
 		return p.paletteTable[paletteTableIndex]
 	default:
 		return 0x00
-	}
-}
-
-// MARK: PPUメモリマップへの書き込み
-func (p *PPU) WritePPUData(value uint8) {
-	/*
-		PPU メモリマップ
-		(範囲 / サイズ / 対象)
-
-		$0000-$1FFF 0x2000 パターンテーブル
-		$2000-$2FFF 0x1000 ネームテーブル
-		$3000-$3EFF 0x0F00 ネームテーブルのミラーリング
-		$3F00-$3F1F 0x0020 パレットテーブル
-		$3F20-$3FFF 0x00E0 パレットテーブルのミラーリング
-		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
-	*/
-
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
-	p.incrementVRAMAddress()
-
-	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
-		if p.mapper.IsCharacterRAM() {
-			p.mapper.WriteCharacterRAM(address, value)
-		}
-	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル
-		vramAddress := p.mirroredVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
-		p.vram[vramAddress] = value
-	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
-		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
-		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
-		}
-		p.paletteTable[paletteTableIndex] = value
-	default:
 	}
 }
 
@@ -386,6 +226,7 @@ func (p *PPU) WritePPUScroll(value uint8) {
 	if !p.w.latch {
 		p.x.update(value) // 1回目はXレジスタも更新 (fineX)
 	}
+
 	p.t.updateScroll(value, p.w.latch) // Tレジスタは毎回更新 (fineY / coarseX / coarseY)
 	p.w.toggle()
 }
@@ -402,6 +243,41 @@ func (p *PPU) WritePPUAddress(value uint8) {
 	p.w.toggle()
 }
 
+// MARK: PPUデータの書き込み (CPU: $2007)
+func (p *PPU) WritePPUData(value uint8) {
+	/*
+		PPU メモリマップ
+		(範囲 / サイズ / 対象)
+
+		$0000-$1FFF 0x2000 パターンテーブル
+		$2000-$2FFF 0x1000 ネームテーブル
+		$3000-$3EFF 0x0F00 ネームテーブルのミラーリング
+		$3F00-$3F1F 0x0020 パレットテーブル
+		$3F20-$3FFF 0x00E0 パレットテーブルのミラーリング
+		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
+	*/
+
+	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	p.incrementVRAMAddress()
+
+	switch {
+	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
+		if p.mapper.IsCharacterRAM() {
+			p.mapper.WriteCharacterRAM(address, value)
+		}
+	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル
+		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
+		p.vram[vramAddress] = value
+	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
+		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
+			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
+		}
+		p.paletteTable[paletteTableIndex] = value
+	default:
+	}
+}
+
 // MARK: DMA転送の実行 (CPU: $4014)
 func (p *PPU) DMATransfer(bytes *[256]uint8) {
 	for _, value := range *bytes {
@@ -410,8 +286,286 @@ func (p *PPU) DMATransfer(bytes *[256]uint8) {
 	}
 }
 
-// MARK: ミラーリング後のVRAMアドレスを取得
-func (p *PPU) mirroredVRAMAddress(address uint16) uint16 {
+// MARK: 可視スキャンラインの処理
+func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
+	if p.dot == 1 {
+		// ラインの先頭でセカンダリOAMを初期化
+		p.clearSecondaryOAM()
+	}
+	if 65 <= p.dot && p.dot <= 256 {
+		p.evaluateNextLineSprite()
+	}
+
+	// 描画
+	if 1 <= p.dot && p.dot <= 256 {
+		p.renderPixel()
+
+		if isRenderingEnabled {
+			p.shiftSpriteRegisters()
+		}
+	}
+
+	if !isRenderingEnabled {
+		return
+	}
+
+	// 背景フェッチ
+	p.fetchBackgroundPipeline()
+
+	// スクロール更新
+	if p.dot == 256 {
+		p.v.incrementVertical()
+	}
+	if p.dot == 257 {
+		p.t.copyHorizontalBitsTo(&p.v)
+	}
+
+	// スプライトフェッチ
+	p.fetchSpritePipeline()
+}
+
+// MARK: VBlankラインの処理
+func (p *PPU) tickVBlankScanline() {
+	if p.dot == 1 {
+		// ラインの先頭でVBlankフラグを立てる
+		p.status.SetVBlank(true)
+		if p.control.GenerateNMI() {
+			p.nmi = true
+		}
+	}
+}
+
+// MARK: プリレンダーラインの処理
+func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
+	if p.dot == 1 {
+		p.status.SetVBlank(false)
+		p.status.SetSpriteZeroHit(false)
+		p.status.SetSpriteOverflow(false)
+		p.clearSecondaryOAM()
+	}
+	if 65 <= p.dot && p.dot <= 256 {
+		p.evaluateNextLineSprite()
+	}
+
+	if !isRenderingEnabled {
+		return
+	}
+
+	p.fetchBackgroundPipeline()
+
+	if p.dot == 256 {
+		p.v.incrementVertical()
+	}
+	if p.dot == 257 {
+		p.t.copyHorizontalBitsTo(&p.v)
+	}
+	if 280 <= p.dot && p.dot <= 304 {
+		p.t.copyVerticalBitsTo(&p.v)
+	}
+
+	// スプライトフェッチ
+	p.fetchSpritePipeline()
+}
+
+// MARK: 次のスキャンラインで描画するスプライトの評価
+func (p *PPU) evaluateNextLineSprite() {
+	p.spriteCount = 0
+	spriteHeight := p.control.SpriteSize()
+
+	// 次のスキャンラインを計算，プリレンダーライン以降は次フレームの0ライン目になる
+	nextScanline := p.scanline + 1
+	if nextScanline > SCANLINE_PRERENDER {
+		nextScanline = 0
+	}
+
+	// プライマリOAMを順番に評価
+	for i := range len(p.oam) / OAM_SPRITE_SIZE {
+		primaryBase := uint(i) * OAM_SPRITE_SIZE
+		spriteY := uint(p.oam[primaryBase+OAM_SPRITE_Y_POS]) + 1 // OAMのY座標は表示座標-1のため補正
+
+		// 次のラインに重なっているか判定
+		if nextScanline < spriteY || nextScanline >= spriteY+uint(spriteHeight) {
+			continue
+		}
+
+		// 重なっているスプライトをプライマリOAMからセカンダリOAMへロード
+		if p.spriteCount < MAX_SPRITE_COUNT {
+			// プライマリOAMの先頭であればスプライト0として位置を記憶
+			if i == 0 {
+				p.spriteZeroIndex = p.spriteCount
+			}
+
+			// セカンダリOAMにプライマリOAMの中身をコピー
+			secondaryBase := p.spriteCount * OAM_SPRITE_SIZE
+			p.secondaryOAM[secondaryBase+OAM_SPRITE_Y_POS] = p.oam[primaryBase+OAM_SPRITE_Y_POS]
+			p.secondaryOAM[secondaryBase+OAM_SPRITE_TILE_POS] = p.oam[primaryBase+OAM_SPRITE_TILE_POS]
+			p.secondaryOAM[secondaryBase+OAM_SPRITE_ATTR_POS] = p.oam[primaryBase+OAM_SPRITE_ATTR_POS]
+			p.secondaryOAM[secondaryBase+OAM_SPRITE_X_POS] = p.oam[primaryBase+OAM_SPRITE_X_POS]
+
+			// ライン上のスプライト数をインクリメント
+			p.spriteCount++
+		} else {
+			// 9個目が存在する場合スプライトオーバーフローフラグをセットし評価を止める
+			p.status.SetSpriteOverflow(true)
+			break
+		}
+	}
+}
+
+// MARK: 背景フェッチパイプライン
+func (p *PPU) fetchBackgroundPipeline() {
+	if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
+		// 背景パターンのフェッチ
+		p.backgroundShift.shift()
+		p.fetchBackground()
+
+		// 8ドット毎にVレジスタの水平アドレスをインクリメント
+		if p.dot%TILE_SIZE == 0 {
+			p.v.incrementHorizontal()
+		}
+	}
+}
+
+// MARK: スプライトフェッチパイプライン
+func (p *PPU) fetchSpritePipeline() {
+	if 257 <= p.dot && p.dot <= 320 {
+		// 次のライン用にタイルをフェッチ
+		spriteIndex := (p.dot - 257) / TILE_SIZE
+		p.fetchSprite(spriteIndex)
+	}
+}
+
+// MARK: 背景ネームテーブル/属性テーブルのフェッチ
+func (p *PPU) fetchBackground() {
+	/*
+		背景フェッチタイミング (8ドット毎)
+
+		| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | ...
+		-----------------------------------------
+		| - |  NT   |  AT   | BG lo | BG hi | ...
+
+		1 ~ 7ドット目のフェッチはラッチに保存され，8ドット目でラッチからシフタにまとめて反映される
+	*/
+
+	switch p.dot % TILE_SIZE {
+	case 1: // ネームテーブルのフェッチ
+		nameTableAddress := p.getNameTableAddress()
+		tile := p.ReadPPUVRAM(nameTableAddress)
+		p.backgroundLatch.nameTable = tile
+	case 3: // 属性テーブルのフェッチ
+		attributeTableAddress := p.getAttributeTableAddress()
+		attribute := p.ReadPPUVRAM(attributeTableAddress)
+		// Vレジスタの位置に応じて該当する2ビットを抽出する
+		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
+		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
+	case 5: // パターンテーブル(下位)のフェッチ
+		patternTableAddress := p.getBackgroundPatternAddress(false)
+		pattern := p.ReadPPUVRAM(patternTableAddress)
+		p.backgroundLatch.patternLower = pattern
+	case 7: // パターンテーブル(上位)のフェッチ
+		patternTableAddress := p.getBackgroundPatternAddress(true)
+		pattern := p.ReadPPUVRAM(patternTableAddress)
+		p.backgroundLatch.patternUpper = pattern
+	case 0: // ラッチからシフトレジスタへロード
+		p.backgroundShift.load(&p.backgroundLatch)
+	}
+}
+
+// MARK: スプライトネームテーブルのフェッチ
+func (p *PPU) fetchSprite(index uint) {
+	/*
+		スプライトフェッチタイミング (8ドット毎)
+
+		| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+		-----------------------------------
+		| - |   -   |   -   | Splow | SpHi  |
+	*/
+
+	// 現在のラインで使用されないシフトレジスタをリセット
+	if p.spriteCount <= index {
+		p.spriteShifts[index].reset()
+		return
+	}
+
+	switch p.dot % TILE_SIZE {
+	case 5: // パターンテーブル(下位)のフェッチ
+		address := p.getSpritePatternAddress(index, false)
+		p.spriteLatch.patternLower = p.ReadPPUVRAM(address)
+	case 7: // パターンテーブル(上位)のフェッチ
+		address := p.getSpritePatternAddress(index, true)
+		p.spriteLatch.patternUpper = p.ReadPPUVRAM(address)
+	case 0: // ラッチ・セカンダリOAMからシフトレジスタへロード
+		basePtr := index * OAM_SPRITE_SIZE
+
+		spriteX := p.secondaryOAM[basePtr+OAM_SPRITE_X_POS]
+		attributes := p.secondaryOAM[basePtr+OAM_SPRITE_ATTR_POS]
+		flipH := (attributes>>6)&1 == 1
+
+		p.spriteShifts[index].load(&p.spriteLatch, flipH)
+		p.spriteShifts[index].attributes = attributes
+		p.spriteShifts[index].xDistance = spriteX
+		p.spriteShifts[index].isSpriteZero = (index == p.spriteZeroIndex)
+	}
+}
+
+// MARK: スプライトシフトレジスタのシフト
+func (p *PPU) shiftSpriteRegisters() {
+	for i := range p.spriteShifts {
+		if p.spriteShifts[i].xDistance > 0 {
+			// 描画位置までは描画位置カウンタを減算
+			p.spriteShifts[i].xDistance--
+		} else {
+			// 描画位置になったら描画するドットを送り始める
+			p.spriteShifts[i].shift()
+		}
+	}
+}
+
+// MARK: ピクセルの書き込み
+func (p *PPU) renderPixel() {
+	screenX := p.dot - 1
+	screenY := p.scanline
+
+	// 現在のドットの背景・スプライトパターン，透過状態を取得
+	bgPattern, bgAttribute := p.getBackgroundPixel()
+	spPattern, spAttributes, isSpriteZero, spPriority := p.getSpritePixel()
+
+	bgOpaque := (bgPattern != 0)
+	spOpaque := (spPattern != 0)
+
+	// スプライト0ヒット判定
+	if isSpriteZero && bgOpaque && spOpaque && screenX < SCREEN_WIDTH-1 {
+		// 左端タイルのマスクがされている時は左端ではスプライト0ヒットが起こらない
+		leftMasked := !p.mask.leftmostBackgroundEnable || !p.mask.leftmostSpriteEnable
+		if !(leftMasked && screenX < TILE_SIZE) {
+			p.status.SetSpriteZeroHit(true)
+		}
+	}
+
+	// 優先順位に基づいて色を決定
+	var color rgb
+	switch {
+	case !bgOpaque && !spOpaque: // 両方透明
+		color = PALETTE[p.paletteTable[0x00]]
+	case !bgOpaque && spOpaque: // 背景のみ透明
+		color = p.getSpriteColor(spAttributes, spPattern)
+	case bgOpaque && !spOpaque: // スプライトのみ透明
+		color = p.getBackgroundColor(bgAttribute, bgPattern)
+	case bgOpaque && spOpaque: // 両方不透明
+		// スプライト優先の場合
+		if spPriority == 0 {
+			color = p.getSpriteColor(spAttributes, spPattern)
+		} else {
+			color = p.getBackgroundColor(bgAttribute, bgPattern)
+		}
+	}
+
+	// 決定した色を描画
+	p.canvas.SetPixel(screenX, screenY, color)
+}
+
+// MARK: VRAMアドレスをミラーリング
+func (p *PPU) mirrorVRAMAddress(address uint16) uint16 {
 	/*
 		VRAM ネームテーブル
 		(範囲 / サイズ / 対象)
@@ -475,54 +629,29 @@ func (p *PPU) incrementVRAMAddress() {
 	p.v.SetFromWord(address & PPU_MEMORY_ADDRESS_MASK)
 }
 
+// MARK: サイクルを進める
+func (p *PPU) incrementCycles() {
+	// ドットを進める
+	p.dot++
+	// 端に達したらドットを0に戻しスキャンラインを進める
+	if p.dot > SCANLINE_END {
+		p.dot = 0
+		p.scanline++
+
+		// プリレンダーラインに達したらスキャンラインを0に戻しフレーム数を進める
+		if p.scanline > SCANLINE_PRERENDER {
+			p.scanline = 0
+			p.frame++
+		}
+	}
+}
+
 // MARK: セカンダリOAMのクリア
 func (p *PPU) clearSecondaryOAM() {
 	for i := range p.secondaryOAM {
 		p.secondaryOAM[i] = 0xFF
 	}
 	p.spriteZeroIndex = SPRITE_ZERO_NOT_FOUND
-}
-
-// MARK: 次のスキャンラインで描画するスプライトの評価
-func (p *PPU) evaluateNextLineSprite() {
-	p.spriteCount = 0
-	spriteHeight := p.control.SpriteSize()
-
-	// 次のスキャンラインを計算，プリレンダーライン以降は次のフレームの0ライン目にする
-	nextScanline := p.scanline + 1
-	if nextScanline > SCANLINE_PRERENDER {
-		nextScanline = 0
-	}
-
-	for i := range len(p.oam) / OAM_SPRITE_SIZE {
-		primaryBase := uint(i) * OAM_SPRITE_SIZE
-		spriteY := uint(p.oam[primaryBase+OAM_SPRITE_Y_POS]) + 1 // OAMのY座標は表示座標-1のため補正
-
-		// 次のラインに重なっているか判定
-		if nextScanline < spriteY || nextScanline >= spriteY+uint(spriteHeight) {
-			continue
-		}
-
-		// 重なっているスプライトをプライマリOAMからセカンダリOAMへロード
-		if p.spriteCount < MAX_SPRITE_COUNT {
-			// プリマリOAMの先頭であればスプライト0として位置を記憶
-			if i == 0 {
-				p.spriteZeroIndex = p.spriteCount
-			}
-
-			secondaryBase := p.spriteCount * OAM_SPRITE_SIZE
-			p.secondaryOAM[secondaryBase+OAM_SPRITE_Y_POS] = p.oam[primaryBase+OAM_SPRITE_Y_POS]
-			p.secondaryOAM[secondaryBase+OAM_SPRITE_TILE_POS] = p.oam[primaryBase+OAM_SPRITE_TILE_POS]
-			p.secondaryOAM[secondaryBase+OAM_SPRITE_ATTR_POS] = p.oam[primaryBase+OAM_SPRITE_ATTR_POS]
-			p.secondaryOAM[secondaryBase+OAM_SPRITE_X_POS] = p.oam[primaryBase+OAM_SPRITE_X_POS]
-
-			p.spriteCount++
-		} else {
-			// 9個目が存在する場合スプライトオーバーフローフラグをセット
-			p.status.SetSpriteOverflow(true)
-			break
-		}
-	}
 }
 
 // MARK: Vレジスタから描画中の行・列のネームテーブルのアドレスを取得
@@ -561,6 +690,7 @@ func (p *PPU) getBackgroundPatternAddress(isUpper bool) uint16 {
 
 // MARK: 描画中のスプライトタイルのパターンテーブルのアドレスを取得
 func (p *PPU) getSpritePatternAddress(index uint, isUpper bool) uint16 {
+	// スプライトの情報を取得
 	secondaryBase := index * OAM_SPRITE_SIZE
 	spriteY := p.secondaryOAM[secondaryBase+OAM_SPRITE_Y_POS] + 1 // OAMのY座標は表示座標-1のため補正
 	spriteTile := p.secondaryOAM[secondaryBase+OAM_SPRITE_TILE_POS]
@@ -577,8 +707,10 @@ func (p *PPU) getSpritePatternAddress(index uint, isUpper bool) uint16 {
 		}
 	}
 
+	// タイル内の行数
 	tileY := uint16(targetScanline - uint(spriteY))
 
+	// 垂直反転の場合はタイル内行数も反転
 	flipV := ((attributes >> 7) & 0x01) == 1
 	if flipV {
 		tileY = (uint16(spriteHeight) - 1) - tileY
@@ -604,76 +736,6 @@ func (p *PPU) getSpritePatternAddress(index uint, isUpper bool) uint16 {
 	}
 
 	return base + (uint16(spriteTile) * TILE_SIZE * 2) + tileY + uint16(offset)
-}
-
-// MARK: 背景ネームテーブル/属性テーブルのフェッチ
-func (p *PPU) fetchBackground() {
-	/*
-		フェッチタイミング
-
-		| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-		-----------------------------------
-		| - |  NT   |  AT   | BGlow | BGHi  |
-	*/
-
-	switch p.dot % TILE_SIZE {
-	case 1: // ネームテーブルのフェッチ
-		nameTableAddress := p.getNameTableAddress()
-		tile := p.ReadPPUVRAM(nameTableAddress)
-		p.backgroundLatch.nameTable = tile
-	case 3: // 属性テーブルのフェッチ
-		attributeTableAddress := p.getAttributeTableAddress()
-		attribute := p.ReadPPUVRAM(attributeTableAddress)
-
-		// Vレジスタの位置に応じて該当する2ビットを抽出する
-		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
-		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
-	case 5: // パターンテーブル(下位)のフェッチ
-		patternTableAddress := p.getBackgroundPatternAddress(false)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
-		p.backgroundLatch.patternLower = pattern
-	case 7: // パターンテーブル(上位)のフェッチ
-		patternTableAddress := p.getBackgroundPatternAddress(true)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
-		p.backgroundLatch.patternUpper = pattern
-	case 0: // ラッチからシフトレジスタへロード
-		p.backgroundShift.load(&p.backgroundLatch)
-	}
-}
-
-// MARK: スプライトネームテーブルのフェッチ
-func (p *PPU) fetchSprite(index uint) {
-	/*
-		フェッチタイミング
-
-		| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-		-----------------------------------
-		| - |   -   |   -   | Splow | SpHi  |
-	*/
-
-	// 使用していない範囲のシフトレジスタをリセット
-	if p.spriteCount <= index {
-		p.spriteShifts[index].reset()
-		return
-	}
-
-	switch p.dot % TILE_SIZE {
-	case 5: // パターンテーブル(下位)のフェッチ
-		address := p.getSpritePatternAddress(index, false)
-		p.spriteLatch.patternLower = p.ReadPPUVRAM(address)
-	case 7: // パターンテーブル(上位)のフェッチ
-		address := p.getSpritePatternAddress(index, true)
-		p.spriteLatch.patternUpper = p.ReadPPUVRAM(address)
-	case 0: // ラッチからシフトレジスタへロード
-		basePtr := index * OAM_SPRITE_SIZE
-
-		spriteX := p.secondaryOAM[basePtr+OAM_SPRITE_X_POS]
-		attributes := p.secondaryOAM[basePtr+OAM_SPRITE_ATTR_POS]
-		flipH := (attributes>>6)&1 == 1
-		p.spriteShifts[index].load(&p.spriteLatch, flipH)
-		p.spriteShifts[index].attributes = attributes
-		p.spriteShifts[index].xDistance = spriteX
-	}
 }
 
 // MARK: 背景ピクセルの取得
@@ -732,50 +794,12 @@ func (p *PPU) getSpritePixel() (pixel uint8, attributes uint8, isSpriteZero bool
 
 			// 透明でなければこのピクセルの情報を返す
 			attributes = p.spriteShifts[i].attributes
-			isSpriteZero = (i == int(p.spriteZeroIndex))
+			isSpriteZero = p.spriteShifts[i].isSpriteZero
 			priority = (attributes >> 5) & 0x01
 			return pixel, attributes, isSpriteZero, priority
 		}
 	}
 	return 0x00, 0x00, false, 0x00
-}
-
-// MARK: ピクセルの書き込み
-func (p *PPU) renderPixel() {
-	screenX := p.dot - 1
-	screenY := p.scanline
-
-	bgPattern, bgAttribute := p.getBackgroundPixel()
-	spPattern, spAttributes, isSpriteZero, spPriority := p.getSpritePixel()
-
-	bgOpaque := (bgPattern != 0)
-	spOpaque := (spPattern != 0)
-
-	// スプライト0ヒット判定
-	if isSpriteZero && bgOpaque && spOpaque && screenX < SCREEN_WIDTH-1 {
-		p.spriteZeroHitDelay = true
-	}
-
-	// 優先順位に基づいて色を決定
-	var color rgb
-	switch {
-	case !bgOpaque && !spOpaque: // 両方透明
-		color = PALETTE[p.paletteTable[0x00]]
-	case !bgOpaque && spOpaque: // 背景のみ透明
-		color = p.getSpriteColor(spAttributes, spPattern)
-	case bgOpaque && !spOpaque: // スプライトのみ透明
-		color = p.getBackgroundColor(bgAttribute, bgPattern)
-	case bgOpaque && spOpaque: // 両方不透明
-		// スプライト優先の場合
-		if spPriority == 0 {
-			color = p.getSpriteColor(spAttributes, spPattern)
-		} else {
-			color = p.getBackgroundColor(bgAttribute, bgPattern)
-		}
-	}
-
-	// 決定した色を描画
-	p.canvas.SetPixel(screenX, screenY, color)
 }
 
 // MARK: 属性情報とピクセルの値から色を取得するメソッド
@@ -805,7 +829,7 @@ func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) rgb {
 	return PALETTE[paletteIndex]
 }
 
-// MARK: NMIの状態を取得するメソッド
+// MARK: 待機中のNMI状態をチェックするメソッド
 func (p *PPU) PollNMI() bool {
 	if p.nmi {
 		p.nmi = false
@@ -820,7 +844,7 @@ func (p *PPU) NMI() bool {
 	return p.nmi
 }
 
-// MARK: 経過フレーム数を返すメソッド
+// MARK: 経過フレーム数を取得するメソッド
 func (p *PPU) Frame() uint64 {
 	return p.frame
 }
