@@ -1,13 +1,14 @@
 package main
 
 import (
+	"unsafe"
+
+	"github.com/veandco/go-sdl2/sdl"
+
 	"fc-emu/bus"
 	"fc-emu/cartridge"
 	"fc-emu/cpu"
 	"fc-emu/ppu"
-	"unsafe"
-
-	"github.com/veandco/go-sdl2/sdl"
 )
 
 func main() {
