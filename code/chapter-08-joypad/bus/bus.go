@@ -2,6 +2,7 @@ package bus
 
 import (
 	"fc-emu/cartridge"
+	"fc-emu/joypad"
 	"fc-emu/ppu"
 )
 
@@ -14,13 +15,17 @@ type Bus struct {
 	wram      [CPU_WRAM_SIZE]uint8 // CPUのWRAM
 	cartridge *cartridge.Cartridge // カートリッジ
 	ppu       *ppu.PPU             // PPU
+	joypad1   *joypad.JoyPad       // コントローラ (1P)
+	joypad2   *joypad.JoyPad       // コントローラ (2P)
 }
 
 // MARK: Busのコンストラクタ
-func NewBus(cartridge *cartridge.Cartridge, ppu *ppu.PPU) Bus {
+func NewBus(cartridge *cartridge.Cartridge, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
 	return Bus{
 		cartridge: cartridge,
 		ppu:       ppu,
+		joypad1:   joypad1,
+		joypad2:   joypad2,
 	}
 }
 
@@ -67,6 +72,10 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	case 0x2008 <= address && address <= 0x3FFF: // PPU I/O ミラーリング
 		ptr := 0x2000 | (address & 0x07) // $2000-$2008 を繰り返す
 		return b.ReadByteFrom(ptr)
+	case address == 0x4016: // コントローラ (1P)
+		return b.joypad1.ReadJoyPad()
+	case address == 0x4017: // コントローラ (2P)
+		return b.joypad2.ReadJoyPad()
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		return b.cartridge.Mapper().ReadProgramRAM(address)
 	case 0x8000 <= address && address <= 0xFFFF: // PRG ROM
@@ -136,6 +145,9 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 			buffer[i] = b.ReadByteFrom(upper | uint16(i))
 		}
 		b.ppu.DMATransfer(&buffer)
+	case address == 0x4016: // コントローラ (1P/2P)
+		b.joypad1.WriteJoyPad(value)
+		b.joypad2.WriteJoyPad(value)
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		b.cartridge.Mapper().WriteProgramRAM(address, value)
 	case 0x8000 <= address && address <= 0xFFFF: // PRG ROM

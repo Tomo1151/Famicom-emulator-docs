@@ -1,13 +1,15 @@
 package main
 
 import (
-	"fc-emu/bus"
-	"fc-emu/cartridge"
-	"fc-emu/cpu"
-	"fc-emu/ppu"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
+
+	"fc-emu/bus"
+	"fc-emu/cartridge"
+	"fc-emu/cpu"
+	"fc-emu/joypad"
+	"fc-emu/ppu"
 )
 
 func main() {
@@ -67,13 +69,20 @@ func main() {
 	// キャンバスの作成
 	cv := ppu.NewCanvas()
 
+	// コントローラの作成
+	j1 := joypad.NewJoypad()
+	j2 := joypad.NewJoypad()
+
 	// PPUの作成
 	p := ppu.NewPPU(ct.Mapper(), &cv)
 
-	// CPUの作成
-	c := cpu.NewCPU(bus.NewBus(ct, &p))
-	// c.Run()
+	// Busの作成
+	b := bus.NewBus(ct, &p, &j1, &j2)
 
+	// CPUの作成
+	c := cpu.NewCPU(b)
+
+	// 描画ループ
 	running := true
 	for running {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -81,12 +90,30 @@ func main() {
 			case *sdl.QuitEvent:
 				running = false
 			case *sdl.KeyboardEvent:
-				if e.State == sdl.PRESSED {
-					switch e.Keysym.Sym {
-					case sdl.K_ESCAPE:
-						running = false
-					}
+				pressed := (e.State == sdl.PRESSED)
+
+				// 1Pのキー割当て
+				switch e.Keysym.Sym {
+				case sdl.K_ESCAPE:
+					running = false
+				case sdl.K_w:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_UP_POS, pressed)
+				case sdl.K_a:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_LEFT_POS, pressed)
+				case sdl.K_s:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_DOWN_POS, pressed)
+				case sdl.K_d:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_RIGHT_POS, pressed)
+				case sdl.K_j:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_B_POS, pressed)
+				case sdl.K_k:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_A_POS, pressed)
+				case sdl.K_BACKSPACE:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_SELECT_POS, pressed)
+				case sdl.K_KP_ENTER, sdl.K_RETURN:
+					j1.SetButtonState(joypad.JOYPAD_BUTTON_START_POS, pressed)
 				}
+
 			}
 		}
 
