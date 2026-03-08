@@ -5,7 +5,8 @@ const (
 	SCREEN_WIDTH  uint = 256
 	SCREEN_HEIGHT uint = 240
 
-	SCALE_FACTOR uint = 3
+	SCALE_FACTOR uint   = 3
+	FPS          uint64 = 60
 )
 
 // MARK: 色型の定義

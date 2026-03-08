@@ -73,10 +73,21 @@ func main() {
 
 	// CPUの作成
 	c := cpu.NewCPU(bus.NewBus(ct, &p))
-	// c.Run()
 
+	// 初期フレーム時間の定義
+	ticksPerFrame := GetTicksPerFrame()
+	last := uint64(sdl.GetPerformanceCounter())
+	var acc uint64
+
+	// 描画ループ
 	running := true
 	for running {
+		// フレーム時間計測
+		now := uint64(sdl.GetPerformanceCounter())
+		acc += now - last
+		last = now
+
+		// イベントループ
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch e := event.(type) {
 			case *sdl.QuitEvent:
@@ -91,10 +102,14 @@ func main() {
 			}
 		}
 
-		// 次のPPUフレームが終わるまでCPUの実行を進める
-		tagetFrame := p.Frame() + 1
-		for p.Frame() < tagetFrame {
-			c.Step()
+		// 1フレーム分の時間が経過したとき
+		for acc >= ticksPerFrame {
+			// 次のPPUフレームが終わるまでCPUの実行を進める
+			targetFrame := p.Frame() + 1
+			for p.Frame() < targetFrame {
+				c.Step()
+			}
+			acc -= ticksPerFrame
 		}
 
 		// テクスチャの更新
@@ -103,6 +118,12 @@ func main() {
 		// テクスチャの描画
 		renderer.Clear()
 		renderer.Copy(texture, nil, nil)
-		renderer.Present()
+		renderer.Present() // 画面のリフレッシュレートに合わせて待機
 	}
+}
+
+// 60FPS分のティック数(高精度タイマ)を求める関数
+func GetTicksPerFrame() uint64 {
+	freq := uint64(sdl.GetPerformanceFrequency())
+	return freq / ppu.FPS
 }
