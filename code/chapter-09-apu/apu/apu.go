@@ -15,15 +15,15 @@ import (
 const (
 	APU_CYCLE_INTERVAL = 7457
 	SAMPLE_RATE        = 44_100
+	CPU_CLOCK_HZ       = 1_789_773
+	BUFFER_SIZE        = 2048
 )
+
+const CYCLES_PER_SAMPLE = float64(CPU_CLOCK_HZ) / float64(SAMPLE_RATE)
 
 // MARK: 変数定義
 var (
-	square1  = NewSquareWaveChannel()
-	square2  = NewSquareWaveChannel()
-	triangle = NewTriangleWaveChannel()
-	noise    = NewNoiseWaveChannel()
-	dmc      = NewDeltaModulationChannel()
+	apu *APU
 )
 
 // MARK: APUの定義
@@ -40,21 +40,37 @@ type APU struct {
 
 	step   uint8 // フレームカウンタのステップ
 	cycles uint
+	phase  float64
+
+	buffer *RingBuffer // サンプルのバッファ
 }
 
 // MARK: APUのコンストラクタ
-func NewAPU() APU {
-	return APU{
-		channel1:     &square1,
-		channel2:     &square2,
-		channel3:     &triangle,
-		channel4:     &noise,
-		channel5:     &dmc,
+func NewAPU() *APU {
+	ch1 := NewSquareWaveChannel()
+	ch2 := NewSquareWaveChannel()
+	ch3 := NewTriangleWaveChannel()
+	ch4 := NewNoiseWaveChannel()
+	ch5 := NewDeltaModulationChannel()
+
+	a := &APU{
+		channel1:     &ch1,
+		channel2:     &ch2,
+		channel3:     &ch3,
+		channel4:     &ch4,
+		channel5:     &ch5,
 		status:       NewStatusRegister(),
 		frameCounter: NewFrameCounter(),
 		step:         0,
 		cycles:       0,
+		buffer:       NewRingBuffer(),
 	}
+
+	apu = a
+
+	a.initAudio()
+
+	return a
 }
 
 // MARK: オーディオの初期化
@@ -63,7 +79,7 @@ func (a *APU) initAudio() {
 		Freq:     SAMPLE_RATE,
 		Format:   sdl.AUDIO_F32,
 		Channels: 1,
-		Samples:  2048,
+		Samples:  BUFFER_SIZE / 2,
 		Callback: sdl.AudioCallback(C.AudioCallback),
 	}
 
@@ -82,9 +98,14 @@ func AudioCallback(userdata unsafe.Pointer, stream *C.uint8_t, length C.int) {
 	n := int(length) / 4
 	buffer := unsafe.Slice((*float32)(unsafe.Pointer(stream)), n)
 
-	for i := range n {
-		buffer[i] = 0.0
+	if apu == nil {
+		for i := range n {
+			buffer[i] = 0.0
+		}
+		return
 	}
+
+	apu.buffer.Read(buffer)
 }
 
 // MARK: APUのクロック
@@ -104,24 +125,68 @@ func (a *APU) Tick(cycles uint) {
 		a.channel4.Tick()
 		a.channel5.Tick()
 
+		// CPUサイクルをサンプリングレートに変換
+		if a.phase >= CYCLES_PER_SAMPLE {
+			a.phase -= CYCLES_PER_SAMPLE
+
+			// サンプリングレートに合わせて出力値をバッファへ書き込み
+			a.buffer.Write(
+				mixSamples(
+					a.channel1.Output(),
+					a.channel2.Output(),
+					a.channel3.Output(),
+					a.channel4.Output(),
+					a.channel5.Output(),
+				),
+			)
+		}
+
+		// サイクルとサンプルの位相を進める
 		a.cycles++
+		a.phase++
 	}
 }
 
 // MARK: ステータスレジスタの読み込み (CPU: $4015)
 func (a *APU) ReadStatus() uint8 {
-	status := a.status.ToByte()
-	status &= 0xF0
-	// @TODO: 各チャンネルの長さカウンタ値を反映させる
-	a.status.SetFrameIRQ(false) // フレームカウンタ割込みをクリア
+	var status uint8
+
+	if a.channel1.lengthCounter.Value() > 0 {
+		status |= 1 << STATUS_REG_IS_1CH_ACTIVE_POS
+	}
+	if a.channel2.lengthCounter.Value() > 0 {
+		status |= 1 << STATUS_REG_IS_2CH_ACTIVE_POS
+	}
+	if a.status.FrameIRQ() {
+		status |= 1 << STATUS_REG_FRAME_IRQ_POS
+	}
+	if a.status.DMCIRQ() {
+		status |= 1 << STATUS_REG_DMC_IRQ_POS
+	}
+
+	// フレームカウンタ割込みフラグをクリア
+	a.status.SetFrameIRQ(false)
+
 	return status
 }
 
 // MARK: ステータスレジスタの書き込み (CPU: $4015)
 func (a *APU) WriteStatus(value uint8) {
-	// prev := a.status.ToByte()
-	a.status.SetFromByte(value)
-	// @TODO: ミュートと長さカウンタのリセット
+	a.status.is1chActive = (value & (1 << STATUS_REG_IS_1CH_ACTIVE_POS)) != 0
+	a.status.is2chActive = (value & (1 << STATUS_REG_IS_2CH_ACTIVE_POS)) != 0
+	a.status.is3chActive = (value & (1 << STATUS_REG_IS_3CH_ACTIVE_POS)) != 0
+	a.status.is4chActive = (value & (1 << STATUS_REG_IS_4CH_ACTIVE_POS)) != 0
+	a.status.is5chActive = (value & (1 << STATUS_REG_IS_5CH_ACTIVE_POS)) != 0
+
+	if !a.status.is1chActive {
+		a.channel1.lengthCounter.clear()
+	}
+	if !a.status.is2chActive {
+		a.channel2.lengthCounter.clear()
+	}
+
+	// DMC割込みフラグをクリア
+	a.status.SetDMCIRQ(false)
 }
 
 // MARK: フレームカウンタの書き込み (CPU: $4017)
@@ -221,16 +286,24 @@ func (a *APU) tickFrameCounter() {
 
 // MARK: エンベロープのクロック (1ch / 2ch / 4ch)
 func (a *APU) tickEnvelopes() {
+	a.channel1.envelope.Tick()
+	a.channel2.envelope.Tick()
 }
 
 // MARK: 線形カウンタのクロック  (3ch)
 func (a *APU) tickLinearCounters() {}
 
 // MARK: 長さカウンタのクロック (1ch / 2ch / 3ch / 4ch)
-func (a *APU) tickLengthCoutners() {}
+func (a *APU) tickLengthCoutners() {
+	a.channel1.lengthCounter.Tick()
+	a.channel2.lengthCounter.Tick()
+}
 
 // MARK: スイープユニットのクロック (1ch / 2ch)
-func (a *APU) tickSweepUnits() {}
+func (a *APU) tickSweepUnits() {
+	a.channel1.sweepUnit.Tick(&a.channel1.lengthCounter, true)
+	a.channel2.sweepUnit.Tick(&a.channel2.lengthCounter, false)
+}
 
 // MARK: フレームカウンタ割り込みの取得
 func (a *APU) FrameIRQ() bool {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/veandco/go-sdl2/sdl"
 
+	"fc-emu/apu"
 	"fc-emu/bus"
 	"fc-emu/cartridge"
 	"fc-emu/cpu"
@@ -58,7 +59,7 @@ func main() {
 	defer texture.Destroy()
 
 	// カートリッジの作成
-	ct := cartridge.NewCartridge("nestest.nes")
+	ct := cartridge.NewCartridge("SuperMarioBros.nes")
 
 	// ROMファイルの読み込み
 	err = ct.Load()
@@ -73,11 +74,14 @@ func main() {
 	j1 := joypad.NewJoypad()
 	j2 := joypad.NewJoypad()
 
+	// APUの作成
+	a := apu.NewAPU()
+
 	// PPUの作成
 	p := ppu.NewPPU(ct.Mapper(), &cv)
 
 	// Busの作成
-	b := bus.NewBus(ct, &p, &j1, &j2)
+	b := bus.NewBus(ct, a, &p, &j1, &j2)
 
 	// CPUの作成
 	c := cpu.NewCPU(b)

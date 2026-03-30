@@ -40,7 +40,7 @@ type SquareWaveRegister struct {
 
 	// $4001 / $4005
 	sweepShift     uint8
-	sweepDirection bool
+	sweepDirection uint8
 	sweepPeriod    uint8
 	sweepEnabled   bool
 
@@ -63,7 +63,7 @@ func NewSquareWaveRegister() SquareWaveRegister {
 		lengthCounterHalt: false,
 		duty:              0x00,
 		sweepShift:        0x00,
-		sweepDirection:    false,
+		sweepDirection:    0x00,
 		sweepPeriod:       0x00,
 		sweepEnabled:      false,
 		timerLower:        0x00,
@@ -117,7 +117,7 @@ func (swr *SquareWaveRegister) write(address uint16, value uint8) {
 			+--------------- E: スイープ有効フラグ
 		*/
 		swr.sweepShift = (value & 0x07)
-		swr.sweepDirection = (value & 0x08) != 0
+		swr.sweepDirection = (value & 0x08) >> 3
 		swr.sweepPeriod = (value & 0x70) >> 4
 		swr.sweepEnabled = (value & 0x80) != 0
 	case 0x4002, 0x4006:

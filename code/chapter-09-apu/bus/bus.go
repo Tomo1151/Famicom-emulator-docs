@@ -1,6 +1,7 @@
 package bus
 
 import (
+	"fc-emu/apu"
 	"fc-emu/cartridge"
 	"fc-emu/joypad"
 	"fc-emu/ppu"
@@ -14,15 +15,17 @@ const (
 type Bus struct {
 	wram      [CPU_WRAM_SIZE]uint8 // CPUのWRAM
 	cartridge *cartridge.Cartridge // カートリッジ
+	apu       *apu.APU             // APU
 	ppu       *ppu.PPU             // PPU
 	joypad1   *joypad.JoyPad       // コントローラ (1P)
 	joypad2   *joypad.JoyPad       // コントローラ (2P)
 }
 
 // MARK: Busのコンストラクタ
-func NewBus(cartridge *cartridge.Cartridge, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
+func NewBus(cartridge *cartridge.Cartridge, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
 	return Bus{
 		cartridge: cartridge,
+		apu:       apu,
 		ppu:       ppu,
 		joypad1:   joypad1,
 		joypad2:   joypad2,
@@ -31,6 +34,7 @@ func NewBus(cartridge *cartridge.Cartridge, ppu *ppu.PPU, joypad1 *joypad.JoyPad
 
 // MARK: 各コンポーネントのクロックの更新
 func (b *Bus) Tick(cycles uint) {
+	b.apu.Tick(cycles)
 	b.ppu.Tick(cycles * 3)
 }
 
@@ -52,6 +56,8 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 		$2007              PPU データ
 		$2008-$3FFF 0x1FF8 PPU I/O レジスタ ($2000-$2008) のミラーリング
 
+		$4015              APU ステータスレジスタ
+
 		$6000-$7FFF 0x2000 カートリッジ PRG RAM
 		$8000-$FFFF 0x8000 カートリッジ PRG ROM / マッパレジスタ
 	*/
@@ -72,6 +78,8 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	case 0x2008 <= address && address <= 0x3FFF: // PPU I/O ミラーリング
 		ptr := 0x2000 | (address & 0x07) // $2000-$2008 を繰り返す
 		return b.ReadByteFrom(ptr)
+	case address == 0x4015: // APU STATUS
+		return b.apu.ReadStatus()
 	case address == 0x4016: // コントローラ (1P)
 		return b.joypad1.ReadJoyPad()
 	case address == 0x4017: // コントローラ (2P)
@@ -148,6 +156,20 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	case address == 0x4016: // コントローラ (1P/2P)
 		b.joypad1.WriteJoyPad(value)
 		b.joypad2.WriteJoyPad(value)
+	case 0x4000 <= address && address <= 0x4003: // APU 1ch
+		b.apu.Write1ch(address, value)
+	case 0x4004 <= address && address <= 0x4007: // APU 2ch
+		b.apu.Write2ch(address, value)
+	case address == 0x4008 || address == 0x400A || address == 0x400B: // APU 3ch
+		b.apu.Write3ch(address, value)
+	case address == 0x400C || address == 0x400E || address == 0x400F: // APU 4ch
+		b.apu.Write4ch(address, value)
+	case 0x4010 <= address && address <= 0x4013: // APU 5ch
+		b.apu.Write5ch(address, value)
+	case address == 0x4015: // APU STATUS
+		b.apu.WriteStatus(value)
+	case address == 0x4017: // APU フレームカウンタ
+		b.apu.WriteFrameCounter(value)
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		b.cartridge.Mapper().WriteProgramRAM(address, value)
 	case 0x8000 <= address && address <= 0xFFFF: // PRG ROM
