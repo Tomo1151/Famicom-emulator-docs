@@ -153,9 +153,9 @@ func (swr *SquareWaveRegister) write(address uint16, value uint8) {
 // MARK: 三角波レジスタ
 type TriangleWaveRegister struct {
 	// $4008
-	lengthCounterHalt    bool
-	linearCounterControl bool
-	linearCounterReload  uint8
+	lengthCounterHalt   bool
+	control             bool
+	linearCounterReload uint8
 
 	// $400A
 	timerLower uint8
@@ -168,12 +168,12 @@ type TriangleWaveRegister struct {
 // MARK: 三角波レジスタのコンストラクタ
 func NewTriangleWaveRegister() TriangleWaveRegister {
 	return TriangleWaveRegister{
-		lengthCounterHalt:    false,
-		linearCounterControl: false,
-		linearCounterReload:  0x00,
-		timerLower:           0x00,
-		timerUpper:           0x00,
-		lengthCounterLoad:    0x00,
+		lengthCounterHalt:   false,
+		control:             false,
+		linearCounterReload: 0x00,
+		timerLower:          0x00,
+		timerUpper:          0x00,
+		lengthCounterLoad:   0x00,
 	}
 }
 
@@ -187,14 +187,14 @@ func (twr *TriangleWaveRegister) write(address uint16, value uint8) {
 			7 6 5 4 3 2 1 0 ビット
 			------- -------
 
-			H R R R R R R R
+			C R R R R R R R
 			| L + + + + + |
 			|	            +- R: 線形カウンタのリロード値
 			|
-			+--------------- H: 長さカウンタの停止 / 線形カウンタのモード
+			+--------------- C: コントロールフラグ / 長さカウンタの停止
 		*/
+		twr.control = (value & 0x80) != 0
 		twr.lengthCounterHalt = (value & 0x80) != 0
-		twr.linearCounterControl = (value & 0x80) != 0
 		twr.linearCounterReload = (value & 0x7F)
 	case 0x400A:
 		/*

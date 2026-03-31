@@ -68,7 +68,6 @@ func (twc *TriangleWaveChannel) write(address uint16, value uint8) {
 		*/
 		twc.linearCounter.update(
 			twc.register.linearCounterReload,
-			twc.register.linearCounterControl,
 		)
 		twc.lengthCounter.SetHalt(twc.register.lengthCounterHalt)
 	case 0x400A:

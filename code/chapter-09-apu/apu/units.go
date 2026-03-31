@@ -180,8 +180,7 @@ func (su *SweepUnit) Enabled() bool {
 type LinearCounter struct {
 	counter     uint8 // 線形カウンタのカウンタ値
 	timerReload uint8 // カウンタのリロード値
-	control     bool  // コントロールフラグ
-	relaod      bool  // リロードフラグ
+	reload      bool  // リロードフラグ
 }
 
 // MARK: LinearCounterのコンストラクタ
@@ -189,14 +188,13 @@ func NewLinearCounter() LinearCounter {
 	return LinearCounter{
 		counter:     0x00,
 		timerReload: 0x00,
-		control:     false,
-		relaod:      false,
+		reload:      false,
 	}
 }
 
 // MARK: 線形カウンタのクロック
-func (lc *LinearCounter) Tick() {
-	if lc.relaod {
+func (lc *LinearCounter) Tick(control bool) {
+	if lc.reload {
 		// リロードフラグがセットの場合，即座にカウンタ値をリロード値に更新
 		lc.counter = lc.timerReload
 	} else if lc.counter > 0 {
@@ -205,20 +203,19 @@ func (lc *LinearCounter) Tick() {
 	}
 
 	// コントロールフラグがクリアであればリロードフラグもクリア
-	if !lc.control {
-		lc.relaod = false
+	if !control {
+		lc.reload = false
 	}
 }
 
 // MARK: 線形カウンタのリロードフラグをセット
 func (lc *LinearCounter) SetReload() {
-	lc.relaod = true
+	lc.reload = true
 }
 
 // MARK: 線形カウンタの更新メソッド
-func (lc *LinearCounter) update(timerReload uint8, control bool) {
+func (lc *LinearCounter) update(timerReload uint8) {
 	lc.timerReload = timerReload
-	lc.control = control
 }
 
 // MARK: 線形カウンタのミュート状態の取得

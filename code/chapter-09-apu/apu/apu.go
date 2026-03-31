@@ -312,7 +312,9 @@ func (a *APU) tickEnvelopes() {
 
 // MARK: 線形カウンタのクロック  (3ch)
 func (a *APU) tickLinearCounters() {
-	a.channel3.linearCounter.Tick()
+	a.channel3.linearCounter.Tick(
+		a.channel3.register.control,
+	)
 }
 
 // MARK: 長さカウンタのクロック (1ch / 2ch / 3ch / 4ch)
