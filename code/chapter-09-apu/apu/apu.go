@@ -174,6 +174,9 @@ func (a *APU) ReadStatus() uint8 {
 	if !a.channel3.lengthCounter.Muted() {
 		status |= 1 << STATUS_REG_IS_3CH_ACTIVE_POS
 	}
+	if !a.channel4.lengthCounter.Muted() {
+		status |= 1 << STATUS_REG_IS_4CH_ACTIVE_POS
+	}
 	if a.status.FrameIRQ() {
 		status |= 1 << STATUS_REG_FRAME_IRQ_POS
 	}
@@ -203,6 +206,9 @@ func (a *APU) WriteStatus(value uint8) {
 	}
 	if !a.status.is3chActive {
 		a.channel3.lengthCounter.clear()
+	}
+	if !a.status.is4chActive {
+		a.channel4.lengthCounter.clear()
 	}
 
 	// DMC割込みフラグをクリア
@@ -308,6 +314,7 @@ func (a *APU) tickFrameCounter() {
 func (a *APU) tickEnvelopes() {
 	a.channel1.envelope.Tick()
 	a.channel2.envelope.Tick()
+	a.channel4.envelope.Tick()
 }
 
 // MARK: 線形カウンタのクロック  (3ch)
@@ -322,6 +329,7 @@ func (a *APU) tickLengthCoutners() {
 	a.channel1.lengthCounter.Tick()
 	a.channel2.lengthCounter.Tick()
 	a.channel3.lengthCounter.Tick()
+	a.channel4.lengthCounter.Tick()
 }
 
 // MARK: スイープユニットのクロック (1ch / 2ch)

@@ -27,6 +27,7 @@ func NewTriangleWaveChannel() *TriangleWaveChannel {
 		lengthCounter: NewLengthCounter(),
 		linearCounter: NewLinearCounter(),
 		timer:         0x0000,
+		timerPeriod:   0x0000,
 		sequencer:     0x00,
 		output:        0.0,
 	}

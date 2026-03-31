@@ -39,14 +39,14 @@ func NewSquareWaveChannel() *SquareWaveChannel {
 
 // MARK: 矩形波チャンネルのクロック
 func (swc *SquareWaveChannel) Tick() {
-	// チャンネルの周期を取得
-	period := swc.sweepUnit.Period()
-
-	// 長さカウンタまたはスイープユニットの状態が無効のときは無音にする
+	// 長さカウンタまたはスイープユニットが0のときはクロックしない
 	if swc.lengthCounter.Muted() || swc.sweepUnit.Muted() {
 		swc.output = 0.0
 		return
 	}
+
+	// チャンネルの周期を取得
+	period := swc.sweepUnit.Period()
 
 	if swc.timer > 0 {
 		// クロック毎にタイマを進める

@@ -239,8 +239,8 @@ type NoiseWaveRegister struct {
 	lengthCounterHalt bool
 
 	// $400E
-	noiseMode   bool
-	timerPeriod uint8
+	noiseMode        bool
+	timerPeriodIndex uint8
 
 	// $400F
 	lengthCounterLoad uint8
@@ -256,7 +256,7 @@ func NewNoiseWaveRegister() NoiseWaveRegister {
 		constantVolume:    false,
 		lengthCounterHalt: false,
 		noiseMode:         false,
-		timerPeriod:       0x00,
+		timerPeriodIndex:  0x00,
 		lengthCounterLoad: 0x00,
 	}
 }
@@ -298,7 +298,7 @@ func (nwr *NoiseWaveRegister) write(address uint16, value uint8) {
 			|
 			+--------------- M: ノイズモード (0: 長周期; 1: 短周期)
 		*/
-		nwr.timerPeriod = (value & 0x0F)
+		nwr.timerPeriodIndex = (value & 0x0F)
 		nwr.noiseMode = (value & 0x80) != 0
 	case 0x400F:
 		/*
@@ -560,7 +560,7 @@ func NewNoiseShiftRegister(mode NoiseShiftMode) NoiseShiftRegister {
 }
 
 // MARK: ノイズシフトレジスタのシフト
-func (nsr *NoiseShiftRegister) step() bool {
+func (nsr *NoiseShiftRegister) step() {
 	/*
 		短周期モード: ビット0とビット6のXOR
 		長周期モード: ビット0とビット1のXOR
@@ -579,7 +579,15 @@ func (nsr *NoiseShiftRegister) step() bool {
 	// 全体を右に1ビットシフトし，ビット14に計算された値を入れる
 	nsr.value >>= 1
 	nsr.value = (nsr.value & 0b011_1111_1111_1111) | feedback<<14
+}
 
-	// 更新後のビット0を出力値とする
-	return (nsr.value & 0x01) != 0
+// MARK: ノイズシフトレジスタのモード変更
+func (nsr *NoiseShiftRegister) SetMode(mode NoiseShiftMode) {
+	nsr.mode = mode
+}
+
+// MARK: ノイズシフトレジスタのビット0の値を取得
+func (nsr *NoiseShiftRegister) Value() uint16 {
+	// ビット0を取り出す
+	return nsr.value & 0x01
 }
