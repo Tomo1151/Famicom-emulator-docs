@@ -7,8 +7,8 @@ type DeltaModulationChannel struct {
 }
 
 // MARK: DeltaModulationChannelのコンストラクタ
-func NewDeltaModulationChannel() DeltaModulationChannel {
-	return DeltaModulationChannel{
+func NewDeltaModulationChannel() *DeltaModulationChannel {
+	return &DeltaModulationChannel{
 		register: NewDMCRegister(),
 		output:   0.0,
 	}

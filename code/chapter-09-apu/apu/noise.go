@@ -7,8 +7,8 @@ type NoiseWaveChannel struct {
 }
 
 // MARK: NoiseWaveChannelのコンストラクタ
-func NewNoiseWaveChannel() NoiseWaveChannel {
-	return NoiseWaveChannel{
+func NewNoiseWaveChannel() *NoiseWaveChannel {
+	return &NoiseWaveChannel{
 		register: NewNoiseWaveRegister(),
 		output:   0.0,
 	}

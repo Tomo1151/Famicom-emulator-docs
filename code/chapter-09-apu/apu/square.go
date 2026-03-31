@@ -24,8 +24,8 @@ type SquareWaveChannel struct {
 }
 
 // MARK: SquareWaveChannelのコンストラクタ
-func NewSquareWaveChannel() SquareWaveChannel {
-	return SquareWaveChannel{
+func NewSquareWaveChannel() *SquareWaveChannel {
+	return &SquareWaveChannel{
 		register:      NewSquareWaveRegister(),
 		envelope:      NewEnvelope(),
 		lengthCounter: NewLengthCounter(),

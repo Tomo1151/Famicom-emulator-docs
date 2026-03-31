@@ -14,6 +14,12 @@ import (
 )
 
 func main() {
+	// SDLの初期化
+	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO); err != nil {
+		panic(err)
+	}
+	defer sdl.Quit()
+
 	// ウィンドウの作成
 	window, err := sdl.CreateWindow(
 		"ファミコンエミュレータ",
@@ -59,7 +65,7 @@ func main() {
 	defer texture.Destroy()
 
 	// カートリッジの作成
-	ct := cartridge.NewCartridge("SuperMarioBros.nes")
+	ct := cartridge.NewCartridge("nestest.nes")
 
 	// ROMファイルの読み込み
 	err = ct.Load()
@@ -103,6 +109,7 @@ func main() {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch e := event.(type) {
 			case *sdl.QuitEvent:
+				b.Shutdown()
 				running = false
 			case *sdl.KeyboardEvent:
 				pressed := (e.State == sdl.PRESSED)
@@ -110,6 +117,7 @@ func main() {
 				// 1Pのキー割当て
 				switch e.Keysym.Sym {
 				case sdl.K_ESCAPE:
+					b.Shutdown()
 					running = false
 				case sdl.K_w:
 					j1.SetButtonState(joypad.JOYPAD_BUTTON_UP_POS, pressed)

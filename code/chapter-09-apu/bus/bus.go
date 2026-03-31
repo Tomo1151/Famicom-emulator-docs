@@ -38,6 +38,11 @@ func (b *Bus) Tick(cycles uint) {
 	b.ppu.Tick(cycles * 3)
 }
 
+// MARK: 各コンポーネントのClose
+func (b *Bus) Shutdown() {
+	b.apu.Close()
+}
+
 // MARK: メモリの読み取り (1バイト)
 func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	/*

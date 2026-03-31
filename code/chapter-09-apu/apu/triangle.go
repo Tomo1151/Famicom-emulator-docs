@@ -7,8 +7,8 @@ type TriangleWaveChannel struct {
 }
 
 // MARK: TriangleWaveChannelのコンストラクタ
-func NewTriangleWaveChannel() TriangleWaveChannel {
-	return TriangleWaveChannel{
+func NewTriangleWaveChannel() *TriangleWaveChannel {
+	return &TriangleWaveChannel{
 		register: NewTriangleWaveRegister(),
 		output:   0.0,
 	}

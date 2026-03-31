@@ -1,10 +1,5 @@
 package apu
 
-/*
-#include <stdint.h>
-void AudioCallback(void* userdata, uint8_t* stream, int length);
-*/
-import "C"
 import (
 	"unsafe"
 
@@ -13,17 +8,17 @@ import (
 
 // MARK: 定数定義
 const (
-	APU_CYCLE_INTERVAL = 7457
 	SAMPLE_RATE        = 44_100
+	APU_CYCLE_INTERVAL = 7457
 	CPU_CLOCK_HZ       = 1_789_773
-	BUFFER_SIZE        = 2048
-)
 
-const CYCLES_PER_SAMPLE = float64(CPU_CLOCK_HZ) / float64(SAMPLE_RATE)
+	// 1サンプル(44.1kHz)あたりのCPUクロック
+	CYCLES_PER_SAMPLE = float64(CPU_CLOCK_HZ) / float64(SAMPLE_RATE)
 
-// MARK: 変数定義
-var (
-	apu *APU
+	AUDIO_CHANNELS      = 1
+	AUDIO_SAMPLES       = 512
+	QUEUE_CHUNK_SAMPLES = 256
+	MAX_QUEUED_BYTES    = SAMPLE_RATE * 4 / 10
 )
 
 // MARK: APUの定義
@@ -38,39 +33,32 @@ type APU struct {
 	status       StatusRegister
 	frameCounter FrameCounter
 
-	step   uint8 // フレームカウンタのステップ
-	cycles uint
-	phase  float64
+	step   uint8   // フレームカウンタのステップ
+	cycles uint    // APUサイクル
+	phase  float64 // サンプル生成の位相
 
-	buffer *RingBuffer // サンプルのバッファ
+	buffer      []float32         // サンプルのバッファ
+	audioDevice sdl.AudioDeviceID // SDLのAudioDeviceID
 }
 
 // MARK: APUのコンストラクタ
 func NewAPU() *APU {
-	ch1 := NewSquareWaveChannel()
-	ch2 := NewSquareWaveChannel()
-	ch3 := NewTriangleWaveChannel()
-	ch4 := NewNoiseWaveChannel()
-	ch5 := NewDeltaModulationChannel()
-
-	a := &APU{
-		channel1:     &ch1,
-		channel2:     &ch2,
-		channel3:     &ch3,
-		channel4:     &ch4,
-		channel5:     &ch5,
+	apu := &APU{
+		channel1:     NewSquareWaveChannel(),
+		channel2:     NewSquareWaveChannel(),
+		channel3:     NewTriangleWaveChannel(),
+		channel4:     NewNoiseWaveChannel(),
+		channel5:     NewDeltaModulationChannel(),
 		status:       NewStatusRegister(),
 		frameCounter: NewFrameCounter(),
 		step:         0,
 		cycles:       0,
-		buffer:       NewRingBuffer(),
+		buffer:       []float32{},
 	}
 
-	apu = a
+	apu.initAudio()
 
-	a.initAudio()
-
-	return a
+	return apu
 }
 
 // MARK: オーディオの初期化
@@ -78,34 +66,20 @@ func (a *APU) initAudio() {
 	spec := &sdl.AudioSpec{
 		Freq:     SAMPLE_RATE,
 		Format:   sdl.AUDIO_F32,
-		Channels: 1,
-		Samples:  BUFFER_SIZE / 2,
-		Callback: sdl.AudioCallback(C.AudioCallback),
+		Channels: AUDIO_CHANNELS,
+		Samples:  AUDIO_SAMPLES,
 	}
 
-	if err := sdl.OpenAudio(spec, nil); err != nil {
+	device, err := sdl.OpenAudioDevice("", false, spec, nil, 0)
+
+	if err != nil {
 		panic(err)
 	}
 
-	// オーディオ再生開始
-	sdl.PauseAudio(false)
-}
+	a.audioDevice = device
+	a.buffer = make([]float32, 0, QUEUE_CHUNK_SAMPLES*2)
 
-// MARK: SDLのオーディオコールバック
-//
-//export AudioCallback
-func AudioCallback(userdata unsafe.Pointer, stream *C.uint8_t, length C.int) {
-	n := int(length) / 4
-	buffer := unsafe.Slice((*float32)(unsafe.Pointer(stream)), n)
-
-	if apu == nil {
-		for i := range n {
-			buffer[i] = 0.0
-		}
-		return
-	}
-
-	apu.buffer.Read(buffer)
+	sdl.PauseAudioDevice(a.audioDevice, false)
 }
 
 // MARK: APUのクロック
@@ -129,21 +103,61 @@ func (a *APU) Tick(cycles uint) {
 		if a.phase >= CYCLES_PER_SAMPLE {
 			a.phase -= CYCLES_PER_SAMPLE
 
-			// サンプリングレートに合わせて出力値をバッファへ書き込み
-			a.buffer.Write(
-				mixSamples(
-					a.channel1.Output(),
-					a.channel2.Output(),
-					a.channel3.Output(),
-					a.channel4.Output(),
-					a.channel5.Output(),
-				),
+			// 各チャンネルの出力値をミックス
+			sample := mixSamples(
+				a.channel1.Output(),
+				a.channel2.Output(),
+				a.channel3.Output(),
+				a.channel4.Output(),
+				a.channel5.Output(),
 			)
+
+			// 内部バッファにサンプルを追加
+			a.buffer = append(a.buffer, sample)
+
+			// 一定数のサンプルが集まったらSDLのオーディオキューへ送信
+			for len(a.buffer) >= QUEUE_CHUNK_SAMPLES {
+				// キューが溢れたらクリアする
+				if sdl.GetQueuedAudioSize(a.audioDevice) >= MAX_QUEUED_BYTES {
+					sdl.ClearQueuedAudio(a.audioDevice)
+				}
+
+				// SDLへ送信して内部バッファを更新
+				a.sendSamples(a.buffer[:QUEUE_CHUNK_SAMPLES])
+				a.buffer = a.buffer[QUEUE_CHUNK_SAMPLES:]
+			}
 		}
 
 		// サイクルとサンプルの位相を進める
 		a.cycles++
 		a.phase++
+	}
+}
+
+// MARK: SDLのオーディオキューへサンプルを送る
+func (a *APU) sendSamples(samples []float32) {
+	// サンプル数が0の時は何もしない
+	if len(samples) == 0 {
+		return
+	}
+
+	// []float32を[]byteに変換
+	bytes := unsafe.Slice(
+		(*byte)(unsafe.Pointer(&samples[0])),
+		len(samples)*4,
+	)
+
+	// SDLのオーディオキューへサンプルを送信
+	_ = sdl.QueueAudio(a.audioDevice, bytes)
+}
+
+// MARK: オーディオデバイスのクローズ
+func (a *APU) Close() {
+	// オーディオデバイスが登録済みであればクローズ
+	if a.audioDevice != 0 {
+		sdl.ClearQueuedAudio(a.audioDevice)
+		sdl.CloseAudioDevice(a.audioDevice)
+		a.audioDevice = 0
 	}
 }
 

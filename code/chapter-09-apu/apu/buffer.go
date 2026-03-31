@@ -2,6 +2,11 @@ package apu
 
 import "sync"
 
+// MARK: 定数定義
+const (
+	BUFFER_SIZE = 2048
+)
+
 // MARK: RingBufferの定義
 type RingBuffer struct {
 	buffer   [BUFFER_SIZE]float32
