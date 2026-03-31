@@ -19,7 +19,7 @@ type SquareWaveChannel struct {
 
 	duty      uint8   // デューティ比
 	timer     uint16  // タイマ
-	sequencer uint8   // シーケンサ
+	sequencer uint    // シーケンサ
 	output    float32 // 出力値
 }
 
@@ -56,11 +56,12 @@ func (swc *SquareWaveChannel) Tick() {
 		swc.sequencer = (swc.sequencer + 1) & 0x07
 
 		// 矩形波タイマは2CPUクロック毎に進むため，周期を2倍して合わせる
-		swc.timer = (period + 1) * 2
+		swc.timer = (period+1)*2 - 1
 	}
 
 	// デューティ比シーケンステーブルから，1のときは現在のボリューム，そうでないときは0にセット
 	if SQUARE_DUTY_TABLE[swc.duty][swc.sequencer] == 1 {
+		// 出力値を正規化してセット
 		swc.output = swc.envelope.Volume() / 15.0
 	} else {
 		swc.output = 0.0

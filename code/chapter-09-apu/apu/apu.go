@@ -165,11 +165,14 @@ func (a *APU) Close() {
 func (a *APU) ReadStatus() uint8 {
 	var status uint8
 
-	if a.channel1.lengthCounter.Value() > 0 {
+	if !a.channel1.lengthCounter.Muted() {
 		status |= 1 << STATUS_REG_IS_1CH_ACTIVE_POS
 	}
-	if a.channel2.lengthCounter.Value() > 0 {
+	if !a.channel2.lengthCounter.Muted() {
 		status |= 1 << STATUS_REG_IS_2CH_ACTIVE_POS
+	}
+	if !a.channel3.lengthCounter.Muted() {
+		status |= 1 << STATUS_REG_IS_3CH_ACTIVE_POS
 	}
 	if a.status.FrameIRQ() {
 		status |= 1 << STATUS_REG_FRAME_IRQ_POS
@@ -197,6 +200,9 @@ func (a *APU) WriteStatus(value uint8) {
 	}
 	if !a.status.is2chActive {
 		a.channel2.lengthCounter.clear()
+	}
+	if !a.status.is3chActive {
+		a.channel3.lengthCounter.clear()
 	}
 
 	// DMC割込みフラグをクリア
@@ -305,12 +311,15 @@ func (a *APU) tickEnvelopes() {
 }
 
 // MARK: 線形カウンタのクロック  (3ch)
-func (a *APU) tickLinearCounters() {}
+func (a *APU) tickLinearCounters() {
+	a.channel3.linearCounter.Tick()
+}
 
 // MARK: 長さカウンタのクロック (1ch / 2ch / 3ch / 4ch)
 func (a *APU) tickLengthCoutners() {
 	a.channel1.lengthCounter.Tick()
 	a.channel2.lengthCounter.Tick()
+	a.channel3.lengthCounter.Tick()
 }
 
 // MARK: スイープユニットのクロック (1ch / 2ch)

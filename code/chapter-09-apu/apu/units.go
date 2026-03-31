@@ -178,64 +178,65 @@ func (su *SweepUnit) Enabled() bool {
 
 // MARK: LinearCounterの定義
 type LinearCounter struct {
-	counter uint8
-	reload  bool
-	count   uint8
-	enabled bool
+	counter     uint8 // 線形カウンタのカウンタ値
+	timerReload uint8 // カウンタのリロード値
+	control     bool  // コントロールフラグ
+	relaod      bool  // リロードフラグ
 }
 
 // MARK: LinearCounterのコンストラクタ
 func NewLinearCounter() LinearCounter {
 	return LinearCounter{
-		counter: 0x00,
-		reload:  false,
-		count:   0x00,
-		enabled: false,
+		counter:     0x00,
+		timerReload: 0x00,
+		control:     false,
+		relaod:      false,
 	}
 }
 
 // MARK: 線形カウンタのクロック
 func (lc *LinearCounter) Tick() {
-	if lc.reload {
-		lc.counter = lc.count
+	if lc.relaod {
+		// リロードフラグがセットの場合，即座にカウンタ値をリロード値に更新
+		lc.counter = lc.timerReload
 	} else if lc.counter > 0 {
+		// リロードフラグがクリアかつカウンタ値が0でなければカウンタ値をデクリメント
 		lc.counter--
 	}
 
-	if !lc.enabled {
-		lc.reload = false
+	// コントロールフラグがクリアであればリロードフラグもクリア
+	if !lc.control {
+		lc.relaod = false
 	}
 }
 
-// MARK: 線形カウンタのリロード
-func (lc *LinearCounter) setReload() {
-	lc.reload = true
+// MARK: 線形カウンタのリロードフラグをセット
+func (lc *LinearCounter) SetReload() {
+	lc.relaod = true
 }
 
 // MARK: 線形カウンタの更新メソッド
-func (lc *LinearCounter) update(count uint8, enabled bool) {
-	lc.count = count
-	lc.enabled = enabled
+func (lc *LinearCounter) update(timerReload uint8, control bool) {
+	lc.timerReload = timerReload
+	lc.control = control
 }
 
 // MARK: 線形カウンタのミュート状態の取得
 func (lc *LinearCounter) Muted() bool {
-	return (lc.counter == 0)
+	return lc.counter == 0
 }
 
 // MARK: LengthCounterの定義
 type LengthCounter struct {
-	counter       uint8 // カウンタ値
-	counterReload uint8 // カウンタリロード値
-	halt          bool  // 停止フラグ
+	counter uint8 // カウンタ値
+	halt    bool  // 停止フラグ
 }
 
 // MARK: LengthCounterのコンストラクタ
 func NewLengthCounter() LengthCounter {
 	return LengthCounter{
-		counter:       0x00,
-		counterReload: 0x00,
-		halt:          false,
+		counter: 0x00,
+		halt:    false,
 	}
 }
 
@@ -256,11 +257,6 @@ func (lc *LengthCounter) load(index uint8) {
 // MARK: 長さカウンタの強制クリア
 func (lc *LengthCounter) clear() {
 	lc.counter = 0
-}
-
-// MARK: 長さカウンタの値取得
-func (lc *LengthCounter) Value() uint8 {
-	return lc.counter
 }
 
 // MARK: 長さカウンタのミュート状態の取得
