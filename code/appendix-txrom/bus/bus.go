@@ -9,6 +9,9 @@ import (
 
 const (
 	CPU_WRAM_SIZE = 2 * 1024 // 2kB
+
+	CPU_WRAM_START uint16 = 0x0000
+	CPU_WRAM_END   uint16 = 0xFFFF
 )
 
 // MARK: Busの定義
@@ -68,7 +71,7 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
 		return b.wram[address&0x07FF] // 2kBでミラーリング
 	case address == 0x2000: // PPU CTRL
 		return b.ppu.ReadPPUControl()
@@ -91,7 +94,7 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 		return b.joypad2.ReadJoyPad()
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		return b.cartridge.Mapper().ReadProgramRAM(address)
-	case 0x8000 <= address && address <= 0xFFFF: // PRG ROM
+	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
 		return b.cartridge.Mapper().ReadProgramROM(address)
 	default:
 		// TODO: 正しいコンポーネントから値を読み取って返す
@@ -132,7 +135,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
 		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	case address == 0x2000: // PPU CTRL
 		b.ppu.WritePPUControl(value)
@@ -177,7 +180,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 		b.apu.WriteFrameCounter(value)
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		b.cartridge.Mapper().WriteProgramRAM(address, value)
-	case 0x8000 <= address && address <= 0xFFFF: // PRG ROM
+	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
 		b.cartridge.Mapper().WriteProgramROM(address, value)
 	default:
 		// TODO: 正しいコンポーネントに値を書き込む
@@ -195,4 +198,9 @@ func (b *Bus) WriteWordAt(address uint16, value uint16) {
 // MARK: NMI状態の取得
 func (b *Bus) NMI() bool {
 	return b.ppu.PollNMI()
+}
+
+// MARK: マッパー割込みの取得
+func (b *Bus) MapperIRQ() bool {
+	return b.cartridge.Mapper().IRQ()
 }

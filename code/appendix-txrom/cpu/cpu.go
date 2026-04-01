@@ -62,6 +62,8 @@ func (c *CPU) Step() {
 
 	if c.bus.NMI() {
 		c.interrupt(NMI)
+	} else if c.bus.MapperIRQ() && !c.registers.P.IrqDisabled {
+		c.interrupt(IRQ)
 	}
 }
 

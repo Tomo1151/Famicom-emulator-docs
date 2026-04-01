@@ -320,6 +320,11 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 		p.t.copyHorizontalBitsTo(&p.v)
 	}
 
+	// マッパー割り込みの生成
+	if p.dot == 260 {
+		p.mapper.GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
+	}
+
 	// スプライトフェッチ
 	p.fetchSpritePipeline()
 }

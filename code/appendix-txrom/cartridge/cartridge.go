@@ -68,7 +68,7 @@ func (c *Cartridge) Load() error {
 	mapper.Init(romFile)
 	c.mapper = mapper
 
-	// c.DumpInfo()
+	c.DumpInfo()
 	return nil
 }
 
@@ -77,6 +77,8 @@ func (c *Cartridge) selectMapper(mapperNum uint8) (mappers.Mapper, error) {
 	switch mapperNum {
 	case 0x00:
 		return &mappers.NROM{}, nil
+	case 0x04:
+		return &mappers.TxROM{}, nil
 	default:
 		return nil, fmt.Errorf("Unsupported mapper type: %02X", mapperNum)
 	}
