@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -11,6 +12,10 @@ import (
 	"fc-emu/cpu"
 	"fc-emu/joypad"
 	"fc-emu/ppu"
+)
+
+const (
+	DEFAULT_ROM = "nestest.nes"
 )
 
 func main() {
@@ -64,8 +69,17 @@ func main() {
 	}
 	defer texture.Destroy()
 
+	// コマンドライン引数のパース
+	var rom string
+	var args = os.Args
+	if len(args) > 1 {
+		rom = args[1]
+	} else {
+		rom = DEFAULT_ROM
+	}
+
 	// カートリッジの作成
-	ct := cartridge.NewCartridge("nestest.nes")
+	ct := cartridge.NewCartridge(rom)
 
 	// ROMファイルの読み込み
 	err = ct.Load()
