@@ -61,8 +61,8 @@ func (swc *SquareWaveChannel) Tick() {
 
 	// デューティ比シーケンステーブルから，1のときは現在のボリューム，そうでないときは0にセット
 	if SQUARE_DUTY_TABLE[swc.duty][swc.sequencer] == 1 {
-		// 出力値を正規化してセット
-		swc.output = swc.envelope.Volume() / 15.0
+		// 出力値をセット
+		swc.output = swc.envelope.Volume()
 	} else {
 		swc.output = 0.0
 	}

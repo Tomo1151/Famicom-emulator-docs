@@ -545,6 +545,56 @@ func (fc *FrameCounter) SetFromByte(value uint8) {
 	fc.sequencerMode = (value & (1 << FRAME_COUNTER_MODE_POS)) != 0
 }
 
+// MARK: DMCシフトレジスタの定義
+type DMCShiftRegisteer struct {
+	value     uint8
+	remaining uint8
+}
+
+// MARK: DMCシフトレジスタのコンストラクタ
+func NewDMCShiftRegister() DMCShiftRegisteer {
+	return DMCShiftRegisteer{
+		value:     0x00,
+		remaining: 0x08,
+	}
+}
+
+// MARK: DMCシフトレジスタのシフト
+func (dsr *DMCShiftRegisteer) shift() uint8 {
+	value := dsr.value & 0x01
+
+	dsr.value >>= 1
+	dsr.remaining--
+
+	return value
+}
+
+// MARK: DMCシフトレジスタの出力値
+func (dsr *DMCShiftRegisteer) Value() uint8 {
+	return dsr.value
+}
+
+// MARK: DMCシフトレジスタの出力値をセット
+func (dsr *DMCShiftRegisteer) SetValue(value uint8) {
+	dsr.value = value
+}
+
+// MARK: 残りビット数の取得
+func (dsr *DMCShiftRegisteer) Remaining() uint8 {
+	return dsr.remaining
+}
+
+// MARK: シフトレジスタが空かどうか
+func (dsr *DMCShiftRegisteer) isEmpty() bool {
+	return dsr.remaining == 0
+}
+
+// MARK: DMCシフトレジスタのリセット
+func (dsr *DMCShiftRegisteer) reset() {
+	dsr.value = 0x00
+	dsr.remaining = 8
+}
+
 // MARK: ノイズシフトレジスタの定義
 type NoiseShiftRegister struct {
 	mode  NoiseShiftMode
