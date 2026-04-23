@@ -89,6 +89,9 @@ func main() {
 	// Busの作成
 	b := bus.NewBus(ct, a, &p, &j1, &j2)
 
+	// APUにreaderをセット
+	a.SetMemoryReader(b.ReadByteFrom)
+
 	// CPUの作成
 	c := cpu.NewCPU(b)
 

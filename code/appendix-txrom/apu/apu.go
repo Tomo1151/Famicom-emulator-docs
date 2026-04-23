@@ -21,6 +21,9 @@ const (
 	MAX_QUEUED_BYTES    = SAMPLE_RATE * 4 / 10
 )
 
+// MARK: MemoryReaderの定義
+type MemoryReader func(address uint16) uint8
+
 // MARK: APUの定義
 type APU struct {
 	// 音声チャンネル
@@ -32,6 +35,7 @@ type APU struct {
 
 	status       StatusRegister
 	frameCounter FrameCounter
+	memoryReader MemoryReader
 
 	step   uint8   // フレームカウンタのステップ
 	cycles uint    // APUサイクル
@@ -372,8 +376,14 @@ func mixSamples(pulse1, pulse2, triangle, noise, dmc float32) float32 {
 	var tndOut float32
 	tndSum := (triangle / 8227.0) + (noise / 12241.0) + (dmc / 22638.0)
 	if tndSum > 0 {
-		tndOut = 159.79 / (1/tndSum + 100)
+		tndOut = 159.79 / ((1 / tndSum) + 100)
 	}
 
 	return pulseOut + tndOut
+}
+
+// MARK: MemoryReaderのセット
+func (a *APU) SetMemoryReader(reader MemoryReader) {
+	a.memoryReader = reader
+	a.channel5.SetMemoryReader(a.memoryReader)
 }

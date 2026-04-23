@@ -52,8 +52,8 @@ func (twc *TriangleWaveChannel) Tick() {
 		twc.timer = twc.timerPeriod
 	}
 
-	// 出力値を正規化してセット
-	twc.output = float32(TRIANGLE_SEQUENCE_TABLE[twc.sequencer]) / 15.0
+	// 出力値をセット
+	twc.output = float32(TRIANGLE_SEQUENCE_TABLE[twc.sequencer])
 }
 
 // MARK: 三角波チャンネルの書き込み

@@ -54,8 +54,8 @@ func (nwc *NoiseWaveChannel) Tick() {
 
 	// シフトレジスタのビット0が0のときは現在のボリューム，そうでないときは0にセット
 	if nwc.noiseShiftRegister.Value() == 0 {
-		// 出力値を正規化してセット
-		nwc.output = nwc.envelope.Volume() / 15.0
+		// 出力値をセット
+		nwc.output = nwc.envelope.Volume()
 	} else {
 		nwc.output = 0.0
 	}
