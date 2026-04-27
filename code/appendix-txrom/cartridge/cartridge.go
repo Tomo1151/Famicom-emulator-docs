@@ -10,12 +10,6 @@ import (
 	"fc-emu/cartridge/mappers"
 )
 
-// MARK: 定数定義
-const (
-	ROM_DATA_DIR  = "../../rom/"
-	SAVE_DATA_DIR = ROM_DATA_DIR + "saves/"
-)
-
 // MARK: 変数定義
 var (
 	NES_TAG = []uint8{0x4E, 0x45, 0x53, 0x1A} // iNESフォーマットのマジックナンバー
@@ -41,9 +35,20 @@ func (c *Cartridge) Load() error {
 	c.name = strings.TrimSuffix(filepath.Base(c.ROM), filepath.Ext(c.ROM))
 
 	// ROMファイルの読み込み
-	romFile, err := os.ReadFile(ROM_DATA_DIR + c.ROM)
+	romFile, err := os.ReadFile(mappers.ROM_DATA_DIR + c.ROM)
 	if err != nil {
 		return fmt.Errorf("Couldn't load rom file: %s", c.ROM)
+	}
+
+	// saves ディレクトリの確認
+	if _, err := os.Stat(mappers.SAVE_DATA_DIR); os.IsNotExist(err) {
+		os.Mkdir(mappers.SAVE_DATA_DIR, 0755)
+	}
+
+	// セーブデータの読み込み
+	saveFile, err := os.ReadFile(mappers.SAVE_DATA_DIR + c.name + ".save")
+	if err != nil {
+		saveFile = []uint8{}
 	}
 
 	// NESタグの検証
@@ -65,10 +70,10 @@ func (c *Cartridge) Load() error {
 		return err
 	}
 
-	mapper.Init(romFile)
+	mapper.Init(c.name, romFile, saveFile)
 	c.mapper = mapper
 
-	c.DumpInfo()
+	c.DumpInfo(saveFile)
 	return nil
 }
 
@@ -90,12 +95,17 @@ func (c *Cartridge) Mapper() mappers.Mapper {
 }
 
 // MARK: ROM情報の表示メソッド
-func (c *Cartridge) DumpInfo() {
+func (c *Cartridge) DumpInfo(savedata []uint8) {
 	fmt.Printf("Cartridge loaded: %s\n", c.name)
 	fmt.Printf("  Mapper      : %s\n", c.mapper.MapperInfo())
 	fmt.Printf("  PRG ROM Size: %d bytes\n", len(c.mapper.ProgramROM()))
 	fmt.Printf("  CHR ROM Size: %d bytes\n", len(c.mapper.CharacterROM()))
 	fmt.Printf("  CHR RAM     : %v\n", c.mapper.IsCharacterRAM())
+	if len(savedata) != 0 {
+		fmt.Println("  SAVE DATA   : loaded")
+	} else {
+		fmt.Println("  SAVE DATA   : not found")
+	}
 	var mirroring string
 	switch c.mapper.Mirroring() {
 	case mappers.MIRRORING_FOURSCREEN:
