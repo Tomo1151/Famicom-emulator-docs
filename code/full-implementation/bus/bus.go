@@ -44,6 +44,7 @@ func (b *Bus) Tick(cycles uint) {
 // MARK: 各コンポーネントのClose
 func (b *Bus) Shutdown() {
 	b.apu.Close()
+	b.cartridge.Mapper().Save()
 }
 
 // MARK: メモリの読み取り (1バイト)

@@ -2,6 +2,11 @@ package mappers
 
 // MARK: 定数定義
 const (
+	ROM_DATA_DIR  = "../../rom/"
+	SAVE_DATA_DIR = ROM_DATA_DIR + "saves/"
+)
+
+const (
 	// ページサイズ
 	PRG_ROM_PAGE_SIZE uint = 16 * 1024 // 16kB
 	PRG_RAM_PAGE_SIZE uint = 8 * 1024  // 16kB
@@ -67,7 +72,7 @@ type Mirroring uint8
 
 // MARK: Mapperの定義
 type Mapper interface {
-	Init(romdata []uint8)
+	Init(name string, romdata []uint8, savedata []uint8)
 
 	ReadProgramRAM(address uint16) uint8
 	ReadProgramROM(address uint16) uint8
@@ -83,6 +88,7 @@ type Mapper interface {
 
 	GenerateScanlineIRQ(scanline uint, isRenderingEnabled bool)
 	IRQ() bool
+	Save()
 
 	MapperInfo() string
 }

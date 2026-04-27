@@ -1,6 +1,9 @@
 package mappers
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // MARK: 定数定義
 const (
@@ -11,6 +14,7 @@ const (
 
 // MARK: TxROMの定義
 type TxROM struct {
+	name           string
 	mirroring      Mirroring
 	isCharacterRAM bool
 
@@ -30,7 +34,8 @@ type TxROM struct {
 }
 
 // MARK: TxROMのコンストラクタ
-func (r *TxROM) Init(romdata []uint8) {
+func (r *TxROM) Init(name string, romdata []uint8, savedata []uint8) {
+	r.name = name
 	programROM, characterROM := ExtractROMs(romdata)
 	programRAM, characterRAM := GenerateRAMs(romdata)
 
@@ -56,6 +61,12 @@ func (r *TxROM) Init(romdata []uint8) {
 	// プログラムRAMの初期化
 	for i := range r.programRAM {
 		r.programRAM[i] = 0xFF
+	}
+
+	// セーブデータのロード
+	if len(savedata) != 0 {
+		copy(r.programRAM[:], savedata)
+		r.ramProtect = 0x80
 	}
 }
 
@@ -209,6 +220,20 @@ func (r *TxROM) PollIRQ() bool {
 		return true
 	} else {
 		return false
+	}
+}
+
+// MARK: セーブデータの書き出し
+func (r *TxROM) Save() {
+	// RAM書き込みが有効な場合のみセーブ
+	if r.ramProtect&0x80 != 0 {
+		filename := SAVE_DATA_DIR + r.name + ".save"
+		err := os.WriteFile(filename, r.programRAM[:], 0644)
+		if err != nil {
+			fmt.Printf("[System] Failed to save game data: %v\n", err)
+		} else {
+			fmt.Printf("[System] Game data saved to: %s\n", filename)
+		}
 	}
 }
 

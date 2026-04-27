@@ -2,6 +2,7 @@ package mappers
 
 // MARK: NROMの定義
 type NROM struct {
+	name           string
 	mirroring      Mirroring
 	isCharacterRAM bool
 
@@ -12,7 +13,8 @@ type NROM struct {
 }
 
 // MARK: NROMのコンストラクタ
-func (r *NROM) Init(romdata []uint8) {
+func (r *NROM) Init(name string, romdata []uint8, savedata []uint8) {
+	r.name = name
 	programROM, characterROM := ExtractROMs(romdata)
 	programRAM, characterRAM := GenerateRAMs(romdata)
 
@@ -75,6 +77,11 @@ func (r *NROM) WriteCharacterRAM(address uint16, value uint8) {
 // MARK: スキャンラインによってIRQを発生させるメソッド
 func (r *NROM) GenerateScanlineIRQ(scanline uint, isRendringEnabled bool) {
 	// NROMはマッパー割り込み無し
+}
+
+// MARK: セーブデータの書き出し
+func (r *NROM) Save() {
+	// NROMはセーブ無し
 }
 
 // MARK: ミラーリングを取得するメソッド
