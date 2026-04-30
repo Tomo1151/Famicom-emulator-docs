@@ -26,6 +26,7 @@ type instruction struct {
 	AddressingMode AddressingMode
 	Bytes          uint8
 	Cycles         uint8
+	Jump           bool
 	Handler        func(mode AddressingMode)
 }
 
@@ -811,6 +812,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         7,
+		Jump:           true,
 		Handler:        c.brk,
 	}
 
@@ -821,6 +823,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Absolute,
 		Bytes:          3,
 		Cycles:         3,
+		Jump:           true,
 		Handler:        c.jmp,
 	}
 
@@ -830,6 +833,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Indirect,
 		Bytes:          3,
 		Cycles:         5,
+		Jump:           true,
 		Handler:        c.jmp,
 	}
 
@@ -840,6 +844,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Absolute,
 		Bytes:          3,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.jsr,
 	}
 
@@ -850,6 +855,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.rti,
 	}
 
@@ -860,6 +866,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.rts,
 	}
 

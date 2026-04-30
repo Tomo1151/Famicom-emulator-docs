@@ -48,11 +48,7 @@ func (c *CPU) Step() {
 	instruction.Handler(instruction.AddressingMode)
 
 	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 - 1）
-	isJump := instruction.Mnemonic == "JMP" ||
-		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
-		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK"
-
-	if !isJump {
+	if !instruction.Jump {
 		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
 

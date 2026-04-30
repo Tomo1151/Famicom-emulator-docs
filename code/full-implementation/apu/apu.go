@@ -120,7 +120,7 @@ func (a *APU) Tick(cycles uint) {
 			a.buffer = append(a.buffer, sample)
 
 			// 一定数のサンプルが集まったらSDLのオーディオキューへ送信
-			for len(a.buffer) >= QUEUE_CHUNK_SAMPLES {
+			if len(a.buffer) >= QUEUE_CHUNK_SAMPLES {
 				// キューが溢れたらクリアする
 				if sdl.GetQueuedAudioSize(a.audioDevice) >= MAX_QUEUED_BYTES {
 					sdl.ClearQueuedAudio(a.audioDevice)
@@ -128,7 +128,7 @@ func (a *APU) Tick(cycles uint) {
 
 				// SDLへ送信して内部バッファを更新
 				a.sendSamples(a.buffer[:QUEUE_CHUNK_SAMPLES])
-				a.buffer = a.buffer[QUEUE_CHUNK_SAMPLES:]
+				a.buffer = a.buffer[:0]
 			}
 		}
 

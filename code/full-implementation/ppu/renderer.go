@@ -29,14 +29,10 @@ func NewCanvas() Canvas {
 
 // MARK: 指定した座標へ色を書き込み
 func (c *Canvas) SetPixel(x, y uint, color rgb) {
-	if c.width <= x || c.height <= y {
-		return
-	}
-
-	basePos := (y*c.width + x) * 3 // 基準インデックスの計算
-	c.buffer[basePos+0] = color[0] // R
-	c.buffer[basePos+1] = color[1] // G
-	c.buffer[basePos+2] = color[2] // B
+	basePos := (y*SCREEN_WIDTH + x) * 3 // 基準インデックスの計算
+	c.buffer[basePos+0] = color[0]      // R
+	c.buffer[basePos+1] = color[1]      // G
+	c.buffer[basePos+2] = color[2]      // B
 }
 
 // MARK: バッファの取得メソッド

@@ -102,10 +102,10 @@ func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
 
 // MARK: PPUクロックの更新
 func (p *PPU) Tick(cycles uint) {
-	for range cycles {
-		// 描画設定を取得
-		isRenderingEnabled := p.mask.backgroundEnable || p.mask.spriteEnable
+	// 描画設定を取得
+	isRenderingEnabled := p.mask.backgroundEnable || p.mask.spriteEnable
 
+	for range cycles {
 		// スキャンライン位置によって処理
 		switch {
 		case SCANLINE_START <= p.scanline && p.scanline < SCANLINE_POSTRENDER:
@@ -292,7 +292,7 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 		// ラインの先頭でセカンダリOAMを初期化
 		p.clearSecondaryOAM()
 	}
-	if 65 <= p.dot && p.dot <= 256 {
+	if p.dot == 256 {
 		p.evaluateNextLineSprite()
 	}
 
@@ -348,7 +348,7 @@ func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
 		p.status.SetSpriteOverflow(false)
 		p.clearSecondaryOAM()
 	}
-	if 65 <= p.dot && p.dot <= 256 {
+	if p.dot == 256 {
 		p.evaluateNextLineSprite()
 	}
 
