@@ -22,6 +22,8 @@ type Bus struct {
 	ppu     *ppu.PPU             // PPU
 	joypad1 *joypad.JoyPad       // コントローラ (1P)
 	joypad2 *joypad.JoyPad       // コントローラ (2P)
+
+	cycles uint // CPUサイクル
 }
 
 // MARK: Busのコンストラクタ
@@ -37,6 +39,7 @@ func NewBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.J
 
 // MARK: 各コンポーネントのクロックの更新
 func (b *Bus) Tick(cycles uint) {
+	b.cycles += cycles
 	b.apu.Tick(cycles)
 	b.ppu.Tick(cycles * 3)
 }
@@ -202,6 +205,15 @@ func (b *Bus) WriteWordAt(address uint16, value uint16) {
 	upper := uint8(value >> 8)
 	b.WriteByteAt(address, lower)
 	b.WriteByteAt(address+1, upper)
+}
+
+// MARK: JoyPadの取得
+func (b *Bus) JoyPad(player uint) *joypad.JoyPad {
+	if player == 0 {
+		return b.joypad1
+	} else {
+		return b.joypad2
+	}
 }
 
 // MARK: NMI状態の取得

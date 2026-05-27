@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -19,6 +20,9 @@ const (
 )
 
 func main() {
+	// メインスレッドで実行
+	runtime.LockOSThread()
+
 	// SDLの初期化
 	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO); err != nil {
 		panic(err)
@@ -116,8 +120,7 @@ func main() {
 	var acc uint64
 
 	// 描画ループ
-	running := true
-	for running {
+	for {
 		// フレーム時間計測
 		now := uint64(sdl.GetPerformanceCounter())
 		acc += now - last
@@ -126,39 +129,17 @@ func main() {
 		// イベントループ
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch e := event.(type) {
-			case *sdl.QuitEvent:
+			case *sdl.QuitEvent: // 終了
 				b.Shutdown()
-				running = false
-			case *sdl.KeyboardEvent:
-				pressed := (e.State == sdl.PRESSED)
-
-				// 1Pのキー割当て
-				switch e.Keysym.Sym {
-				case sdl.K_ESCAPE:
-					b.Shutdown()
-					running = false
-				case sdl.K_w:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_UP_POS, pressed)
-				case sdl.K_a:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_LEFT_POS, pressed)
-				case sdl.K_s:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_DOWN_POS, pressed)
-				case sdl.K_d:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_RIGHT_POS, pressed)
-				case sdl.K_j:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_B_POS, pressed)
-				case sdl.K_k:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_A_POS, pressed)
-				case sdl.K_BACKSPACE:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_SELECT_POS, pressed)
-				case sdl.K_KP_ENTER, sdl.K_RETURN:
-					j1.SetButtonState(joypad.JOYPAD_BUTTON_START_POS, pressed)
-				}
-
+				return
+			case *sdl.KeyboardEvent: // キーボード操作
+				handleKeyboardEvent(e, &b)
 			}
 		}
 
-		// 1フレーム分の時間が経過したとき
+		isTextureUpdated := acc >= ticksPerFrame
+
+		// 1フレーム分の時間が経過するまで
 		for acc >= ticksPerFrame {
 			// 次のPPUフレームが終わるまでCPUの実行を進める
 			targetFrame := p.Frame() + 1
@@ -168,13 +149,48 @@ func main() {
 			acc -= ticksPerFrame
 		}
 
-		// テクスチャの更新
-		texture.Update(nil, buf, int(ppu.SCREEN_WIDTH*3))
+		// 画面描画が更新されたら
+		if isTextureUpdated {
+			// テクスチャの更新
+			texture.Update(nil, buf, int(ppu.SCREEN_WIDTH*3))
 
-		// テクスチャの描画
-		renderer.Clear()
-		renderer.Copy(texture, nil, nil)
-		renderer.Present()
+			// テクスチャの描画
+			renderer.Clear()
+			renderer.Copy(texture, nil, nil)
+			renderer.Present()
+		}
+	}
+}
+
+// キーボードイベントの処理
+func handleKeyboardEvent(e *sdl.KeyboardEvent, b *bus.Bus) {
+	pressed := (e.State == sdl.PRESSED)
+
+	// 1Pのキー割当て
+	switch e.Keysym.Sym {
+	case sdl.K_ESCAPE:
+		// sdl.QuitEventを生成
+		qe := sdl.QuitEvent{
+			Type:      sdl.QUIT,
+			Timestamp: sdl.GetTicks(),
+		}
+		sdl.PushEvent(&qe)
+	case sdl.K_w:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_UP_POS, pressed)
+	case sdl.K_a:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_LEFT_POS, pressed)
+	case sdl.K_s:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_DOWN_POS, pressed)
+	case sdl.K_d:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_RIGHT_POS, pressed)
+	case sdl.K_j:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_B_POS, pressed)
+	case sdl.K_k:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_A_POS, pressed)
+	case sdl.K_BACKSPACE:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_SELECT_POS, pressed)
+	case sdl.K_KP_ENTER, sdl.K_RETURN:
+		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_START_POS, pressed)
 	}
 }
 

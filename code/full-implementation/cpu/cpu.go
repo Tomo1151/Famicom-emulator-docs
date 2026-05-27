@@ -11,7 +11,6 @@ type CPU struct {
 	registers      registers
 	bus            bus.Bus
 	instructionSet instructionSet
-	cycles         uint
 }
 
 // MARK: CPUのコンストラクタ
@@ -28,10 +27,7 @@ func NewCPU(bus bus.Bus) *CPU {
 		PC: cpu.bus.ReadWordFrom(0xFFFC),
 		P:  NewStatusRegister(),
 	}
-	cpu.cycles = 0
 
-	// FIXME: nestest用のエントリポイント
-	// cpu.registers.PC = 0xC000
 	return cpu
 }
 
@@ -44,6 +40,9 @@ func (c *CPU) Step() {
 	// 命令のデコード
 	instruction := c.instructionSet[opcode]
 
+	// 各コンポーネントのクロック
+	c.bus.Tick(uint(instruction.Cycles))
+
 	// 命令の実行
 	instruction.Handler(instruction.AddressingMode)
 
@@ -52,10 +51,7 @@ func (c *CPU) Step() {
 		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
 
-	// 各コンポーネントのクロック
-	c.cycles += uint(instruction.Cycles)
-	c.bus.Tick(uint(instruction.Cycles))
-
+	// 割り込みの制御
 	if c.bus.NMI() {
 		c.interrupt(NMI)
 	} else if c.bus.MapperIRQ() && !c.registers.P.IrqDisabled {
@@ -75,7 +71,7 @@ func (c *CPU) interrupt(interrupt Interrupt) {
 	c.pushByte(status.ToByte())
 	c.registers.P.IrqDisabled = true
 
-	c.bus.Tick(uint(interrupt.CPUCycles))
+	c.bus.Tick(uint(interrupt.Cycles))
 	c.registers.PC = c.bus.ReadWordFrom(interrupt.VectorAddress)
 }
 
@@ -102,6 +98,11 @@ func (c *CPU) updateNZFlags(result uint8) {
 	} else {
 		c.registers.P.Zero = false
 	}
+}
+
+// MARK: ページ跨ぎの判定メソッド
+func (c *CPU) isPageCrossed(address1, address2 uint16) bool {
+	return (address1 & 0xFF00) != (address2 & 0xFF00)
 }
 
 // MARK: 実効アドレス算出メソッド
@@ -155,6 +156,27 @@ func (c *CPU) calcOperandAddress(mode AddressingMode) uint16 {
 		fallthrough
 	default:
 		return 0x0000
+	}
+}
+
+// 共通の分岐処理メソッド
+func (c *CPU) branchIf(condition bool, mode AddressingMode) {
+	if condition {
+		address := c.calcOperandAddress(mode)
+
+		// 分岐成功で +1 サイクル
+		c.bus.Tick(1)
+
+		/*
+			ページ境界を跨いだ場合はさらに +1 サイクル
+			分岐元の次の命令のPCは (c.registers.PC + 1)
+			分岐先のPCは (address + 1) になるため、その2つでページ判定を行う
+		*/
+		if c.isPageCrossed(c.registers.PC+1, address+1) {
+			c.bus.Tick(1)
+		}
+
+		c.registers.PC = address
 	}
 }
 
@@ -395,66 +417,42 @@ func (c *CPU) ror(mode AddressingMode) {
 // MARK: 条件分岐系 公式命令
 // BCC命令の実装
 func (c *CPU) bcc(mode AddressingMode) {
-	if !c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Carry, mode)
 }
 
-// BCC命令の実装
+// BCS命令の実装
 func (c *CPU) bcs(mode AddressingMode) {
-	if c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Carry, mode)
 }
 
 // BEQ命令の実装
 func (c *CPU) beq(mode AddressingMode) {
-	if c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Zero, mode)
 }
 
 // BMI命令の実装
 func (c *CPU) bmi(mode AddressingMode) {
-	if c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Negative, mode)
 }
 
 // BNE命令の実装
 func (c *CPU) bne(mode AddressingMode) {
-	if !c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Zero, mode)
 }
 
 // BPL命令の実装
 func (c *CPU) bpl(mode AddressingMode) {
-	if !c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Negative, mode)
 }
 
 // BVC命令の実装
 func (c *CPU) bvc(mode AddressingMode) {
-	if !c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Overflow, mode)
 }
 
 // BVS命令の実装
 func (c *CPU) bvs(mode AddressingMode) {
-	if c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Overflow, mode)
 }
 
 // MARK: ジャンプ系 公式命令
