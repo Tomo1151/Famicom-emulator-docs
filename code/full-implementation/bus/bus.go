@@ -10,8 +10,8 @@ import (
 const (
 	CPU_WRAM_SIZE = 2 * 1024 // 2kB
 
-	CPU_WRAM_START uint16 = 0x0000
-	CPU_WRAM_END   uint16 = 0xFFFF
+	CPU_ADDRESS_START uint16 = 0x0000
+	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
 // MARK: Busの定義
@@ -79,7 +79,7 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	}
 
 	switch {
-	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF: // CPU WRAM
 		return b.wram[address&0x07FF] // 2kBでミラーリング
 	case address == 0x2000: // PPU CTRL
 		return b.ppu.ReadPPUControl()
@@ -102,7 +102,7 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 		return b.joypad2.ReadJoyPad()
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		return b.mapper.ReadProgramRAM(address)
-	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
+	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
 		return b.mapper.ReadProgramROM(address)
 	default:
 		// TODO: 正しいコンポーネントから値を読み取って返す
@@ -147,7 +147,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	}
 
 	switch {
-	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF: // CPU WRAM
 		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	case address == 0x2000: // PPU CTRL
 		b.ppu.WritePPUControl(value)
@@ -192,7 +192,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 		b.apu.WriteFrameCounter(value)
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
 		b.mapper.WriteProgramRAM(address, value)
-	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
+	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
 		b.mapper.WriteProgramROM(address, value)
 	default:
 		// TODO: 正しいコンポーネントに値を書き込む

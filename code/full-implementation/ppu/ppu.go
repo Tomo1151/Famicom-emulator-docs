@@ -11,6 +11,10 @@ const (
 	PPU_PRIMARY_OAM_SIZE   = 64 * OAM_SPRITE_SIZE // 64スプライト
 	PPU_SECONDARY_OAM_SIZE = 8 * OAM_SPRITE_SIZE  // 8スプライト
 
+	PPU_ADDRESS_START      = 0x0000
+	PPU_ADDRESS_END        = 0xFFFF
+	PPU_VRAM_ADDRESS_SPACE = 0x4000
+
 	PPU_MEMORY_ADDRESS_MASK    = 0x3FFF // 14ビット
 	PPU_NAMETABLE_ADDRESS_MASK = 0x2FFF // ミラーリング直前のアドレス
 
@@ -44,7 +48,7 @@ type PPU struct {
 	vram         [PPU_VRAM_SIZE]uint8          // Video RAM
 	oam          [PPU_PRIMARY_OAM_SIZE]uint8   // Object Attribute Memory
 	secondaryOAM [PPU_SECONDARY_OAM_SIZE]uint8 // Secondary OAM
-	paletteTable [PPU_PALETTE_TABLE_SIZE]uint8 // Palette Table
+	paletteTable [PPU_PALETTE_TABLE_SIZE]uint8 // Palette RAM
 
 	// IOレジスタ
 	control ControlRegister // $2000
@@ -151,18 +155,18 @@ func (p *PPU) ReadPPUData() uint8 {
 
 	// CPUからの読み取りは内部バッファにより一回分遅延する
 	value := p.dataBuffer
-	p.dataBuffer = p.ReadPPUVRAM(address)
+	p.dataBuffer = p.ReadPPUMemory(address)
 
 	// パレットテーブルのみ遅延無しで読み取り
 	if 0x3F00 <= address && address <= 0x3FFF {
-		value = p.ReadPPUVRAM(address)
+		value = p.ReadPPUMemory(address)
 	}
 
 	return value
 }
 
 // MARK: PPUメモリマップの読み取り
-func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
+func (p *PPU) ReadPPUMemory(address uint16) uint8 {
 	/*
 		PPU メモリマップ
 		(範囲 / サイズ / 対象)
@@ -176,12 +180,12 @@ func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
+	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
 		return p.mapper.ReadCharacterROM(address)
 	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
 		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
 		return p.vram[vramAddress]
-	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
+	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル (Palette RAM)
 		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
 		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
 			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
@@ -261,14 +265,14 @@ func (p *PPU) WritePPUData(value uint8) {
 	p.incrementVRAMAddress()
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
+	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
 		if p.mapper.IsCharacterRAM() {
 			p.mapper.WriteCharacterRAM(address, value)
 		}
-	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル
+	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
 		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
 		p.vram[vramAddress] = value
-	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
+	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル (Palette RAM)
 		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
 		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
 			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
@@ -455,21 +459,21 @@ func (p *PPU) fetchBackground() {
 	switch p.dot % TILE_SIZE {
 	case 1: // ネームテーブルのフェッチ
 		nameTableAddress := p.getNameTableAddress()
-		tile := p.ReadPPUVRAM(nameTableAddress)
+		tile := p.ReadPPUMemory(nameTableAddress)
 		p.backgroundLatch.nameTable = tile
 	case 3: // 属性テーブルのフェッチ
 		attributeTableAddress := p.getAttributeTableAddress()
-		attribute := p.ReadPPUVRAM(attributeTableAddress)
+		attribute := p.ReadPPUMemory(attributeTableAddress)
 		// Vレジスタの位置に応じて該当する2ビットを抽出する
 		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
 		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
 	case 5: // パターンテーブル(下位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(false)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
+		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternLower = pattern
 	case 7: // パターンテーブル(上位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(true)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
+		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
 		p.backgroundShift.load(&p.backgroundLatch)
@@ -495,10 +499,10 @@ func (p *PPU) fetchSprite(index uint) {
 	switch p.dot % TILE_SIZE {
 	case 5: // パターンテーブル(下位)のフェッチ
 		address := p.getSpritePatternAddress(index, false)
-		p.spriteLatch.patternLower = p.ReadPPUVRAM(address)
+		p.spriteLatch.patternLower = p.ReadPPUMemory(address)
 	case 7: // パターンテーブル(上位)のフェッチ
 		address := p.getSpritePatternAddress(index, true)
-		p.spriteLatch.patternUpper = p.ReadPPUVRAM(address)
+		p.spriteLatch.patternUpper = p.ReadPPUMemory(address)
 	case 0: // ラッチ・セカンダリOAMからシフトレジスタへロード
 		basePtr := index * OAM_SPRITE_SIZE
 
