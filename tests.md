@@ -2,6 +2,227 @@
 
 ## CPU
 
+### branch_timing_tests
+
+#### 1.Branch_Basics.nes
+
+passed
+
+#### 2.Backward_Branch.nes
+
+passed
+
+#### 3.Forward_Branch.nes
+
+passed
+
+### cpu_exec_space
+
+#### test_cpu_exec_space_apu.nes
+
+Failed #2: 4000 ERROR Mysteriously Landed at $0234 Program flow did not follow the planned path for a number of different possible reasons. Failure to obey predetermined execution path.
+
+#### test_cpu_exec_space_ppuio.nes
+
+Failed #3: PPU open bus implementation is missing or incomplete: A write to $2003, followed by a read from $2001 should return the same value as was written.
+
+### cpu_interrupts_v2
+
+#### 1-cli_latency.nes
+
+Tests the delay in CLI taking effect, and some basic aspects of IRQ
+handling and the APU frame IRQ (needed by the tests). It uses the APU's
+frame IRQ and first verifies that it works well enough for the tests.
+
+The later tests execute CLI followed by SEI and equivalent pairs of
+instructions (CLI, PLP, where the PLP sets the I flag). These should
+only allow at most one invocation of the IRQ handler, even if it doesn't
+acknowledge the source of the IRQ. RTI is also tested, which behaves
+differently. These tests also _don't_ disable interrupts after the first
+IRQ, in order to test whether a pair of instructions allows only one
+interrupt or causes continuous interrupts that block the main code from
+continuing.
+
+$03) APU should generate IRQ when $4017 = $00
+
+#### 2-nmi_and_brk.nes
+
+NMI behavior when it interrupts BRK. Occasionally fails on
+NES due to PPU-CPU synchronization.
+
+Result when run:
+NMI BRK --
+27 36 00 NMI before CLC
+26 36 00 NMI after CLC
+26 36 00
+36 00 00 NMI interrupting BRK, with B bit set on stack
+36 00 00
+36 00 00
+36 00 00
+36 00 00
+27 36 00 NMI after SEC at beginning of IRQ handler
+27 36 00
+
+NMI BRK 00
+27 36 00
+27 36 00
+26 36 00
+26 36 00
+26 36 00
+26 36 00
+26 36 00
+26 36 00
+26 36 00
+26 36 00
+
+A58D3981
+Failed
+
+#### 3-nmi_and_irq.nes
+
+NMI behavior when it interrupts IRQ vectoring.
+
+Result when run:
+NMI IRQ
+23 00 NMI occurs before LDA #1
+21 00 NMI occurs after LDA #1 (Z flag clear)
+21 00
+20 00 NMI occurs after CLC, interrupting IRQ
+20 00
+20 00
+20 00
+20 00
+20 00
+20 00 Same result for 7 clocks before IRQ is vectored
+25 20 IRQ occurs, then NMI occurs after SEC in IRQ handler
+25 20
+
+NMI BRK
+23 00
+21 00
+20 00
+20 00
+20 00
+20 00
+00 00
+00 00
+00 00
+00 00
+00 00
+
+7A096051
+Failed
+
+#### 4-irq_and_dma.nes
+
+Has IRQ occur at various times around sprite DMA.
+First column refers to what instruction IRQ occurred
+after. Second column is time of IRQ, in CPU clocks relative
+to some arbitrary starting point.
+
+0 +0
+1 +1
+1 +2
+2 +3
+2 +4
+4 +5
+4 +6
+7 +7
+7 +8
+7 +9
+7 +10
+8 +11
+8 +12
+8 +13
+...
+8 +524
+8 +525
+8 +526
+9 +527
+
+53 +0
+53 +1
+53 +2
+53 +3
+53 +4
+53 +5
+53 +6
+53 +7
+53 +8
+53 +9
+53 +10
+53 +11
+53 +12
+53 +13
+...
+53 +524
+53 +525
+53 +526
+53 +527
+
+D927EAD0
+Failed
+
+#### 5-branch_delays_irq.nes
+
+stucked
+
+### cpu_timing_test6/cpu_timing_test.nes
+
+Fail OP : $11 with page cross
+emulator: 5
+correct : 6
+
+### nes_instr_test
+
+#### 01-implied.nes
+
+passed
+
+#### 02-immediate.nes
+
+6B ARR #n
+AB ATX #n
+Failed
+
+#### 03-zero_page.nes
+
+passed
+
+#### 04-zp_xy.nes
+
+passed
+
+#### 05-absolute.nes
+
+passed
+
+#### 06-abs_xy.nes
+
+9C SYA abs,X
+9E SXA abs,Y
+Failed
+
+#### 07-ind_x.nes
+
+passed
+
+#### 08-ind_y.nes
+
+passed
+
+#### 09-branches.nes
+
+passed
+
+#### 10-stack.nes
+
+passed
+
+#### 11-special.nes
+
+passed
+
 ## PPU
 
 ### color_test.nes
