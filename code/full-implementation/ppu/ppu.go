@@ -1,8 +1,6 @@
 package ppu
 
-import (
-	"fc-emu/cartridge/mappers"
-)
+
 
 // MARK: 定数定義
 const (
@@ -45,10 +43,9 @@ const (
 
 // MARK: PPUの定義
 type PPU struct {
-	vram         [PPU_VRAM_SIZE]uint8          // Video RAM
+	bus          *PPUBus                       // PPU用メモリバス
 	oam          [PPU_PRIMARY_OAM_SIZE]uint8   // Object Attribute Memory
 	secondaryOAM [PPU_SECONDARY_OAM_SIZE]uint8 // Secondary OAM
-	paletteTable [PPU_PALETTE_TABLE_SIZE]uint8 // Palette RAM
 
 	// IOレジスタ
 	control ControlRegister // $2000
@@ -67,7 +64,6 @@ type PPU struct {
 	spriteLatch     SpriteLatch
 	spriteShifts    [8]SpriteShiftRegister
 
-	mapper mappers.Mapper // カートリッジ (CHR ROM) への参照
 	canvas *Canvas        // 描画キャンバスの参照
 
 	dot             uint
@@ -82,7 +78,7 @@ type PPU struct {
 }
 
 // MARK: PPUのコンストラクタ
-func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
+func NewPPU(bus *PPUBus, canvas *Canvas) PPU {
 	return PPU{
 		control:         NewControlRegister(),
 		mask:            NewMaskRegister(),
@@ -91,7 +87,7 @@ func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
 		v:               NewAddressRegister(),
 		x:               NewXRegister(),
 		w:               NewWRegister(),
-		mapper:          mapper,
+		bus:             bus,
 		canvas:          canvas,
 		dot:             0,
 		scanline:        0,
@@ -155,45 +151,14 @@ func (p *PPU) ReadPPUData() uint8 {
 
 	// CPUからの読み取りは内部バッファにより一回分遅延する
 	value := p.dataBuffer
-	p.dataBuffer = p.ReadPPUMemory(address)
+	p.dataBuffer = p.bus.ReadByte(address)
 
 	// パレットテーブルのみ遅延無しで読み取り
 	if 0x3F00 <= address && address <= 0x3FFF {
-		value = p.ReadPPUMemory(address)
+		value = p.bus.ReadByte(address)
 	}
 
 	return value
-}
-
-// MARK: PPUメモリマップの読み取り
-func (p *PPU) ReadPPUMemory(address uint16) uint8 {
-	/*
-		PPU メモリマップ
-		(範囲 / サイズ / 対象)
-
-		$0000-$1FFF 0x2000 パターンテーブル
-		$2000-$2FFF 0x1000 ネームテーブル
-		$3000-$3EFF 0x0F00 ネームテーブルのミラーリング
-		$3F00-$3F1F 0x0020 パレットテーブル
-		$3F20-$3FFF 0x00E0 パレットテーブルのミラーリング
-		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
-	*/
-
-	switch {
-	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
-		return p.mapper.ReadCharacterROM(address)
-	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
-		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
-		return p.vram[vramAddress]
-	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル (Palette RAM)
-		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
-		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
-		}
-		return p.paletteTable[paletteTableIndex]
-	default:
-		return 0x00
-	}
 }
 
 // MARK: PPUコントロールレジスタの書き込み (CPU: $2000)
@@ -249,37 +214,9 @@ func (p *PPU) WritePPUAddress(value uint8) {
 
 // MARK: PPUデータの書き込み (CPU: $2007)
 func (p *PPU) WritePPUData(value uint8) {
-	/*
-		PPU メモリマップ
-		(範囲 / サイズ / 対象)
-
-		$0000-$1FFF 0x2000 パターンテーブル
-		$2000-$2FFF 0x1000 ネームテーブル
-		$3000-$3EFF 0x0F00 ネームテーブルのミラーリング
-		$3F00-$3F1F 0x0020 パレットテーブル
-		$3F20-$3FFF 0x00E0 パレットテーブルのミラーリング
-		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
-	*/
-
 	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
 	p.incrementVRAMAddress()
-
-	switch {
-	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
-		if p.mapper.IsCharacterRAM() {
-			p.mapper.WriteCharacterRAM(address, value)
-		}
-	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
-		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
-		p.vram[vramAddress] = value
-	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル (Palette RAM)
-		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
-		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
-		}
-		p.paletteTable[paletteTableIndex] = value
-	default:
-	}
+	p.bus.WriteByte(address, value)
 }
 
 // MARK: DMA転送の実行 (CPU: $4014)
@@ -326,7 +263,7 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 
 	// マッパー割り込みの生成
 	if p.dot == 260 {
-		p.mapper.GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
+		p.bus.mapper.GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
 	}
 
 	// スプライトフェッチ
@@ -459,21 +396,21 @@ func (p *PPU) fetchBackground() {
 	switch p.dot % TILE_SIZE {
 	case 1: // ネームテーブルのフェッチ
 		nameTableAddress := p.getNameTableAddress()
-		tile := p.ReadPPUMemory(nameTableAddress)
+		tile := p.bus.ReadByte(nameTableAddress)
 		p.backgroundLatch.nameTable = tile
 	case 3: // 属性テーブルのフェッチ
 		attributeTableAddress := p.getAttributeTableAddress()
-		attribute := p.ReadPPUMemory(attributeTableAddress)
+		attribute := p.bus.ReadByte(attributeTableAddress)
 		// Vレジスタの位置に応じて該当する2ビットを抽出する
 		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
 		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
 	case 5: // パターンテーブル(下位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(false)
-		pattern := p.ReadPPUMemory(patternTableAddress)
+		pattern := p.bus.ReadByte(patternTableAddress)
 		p.backgroundLatch.patternLower = pattern
 	case 7: // パターンテーブル(上位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(true)
-		pattern := p.ReadPPUMemory(patternTableAddress)
+		pattern := p.bus.ReadByte(patternTableAddress)
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
 		p.backgroundShift.load(&p.backgroundLatch)
@@ -499,10 +436,10 @@ func (p *PPU) fetchSprite(index uint) {
 	switch p.dot % TILE_SIZE {
 	case 5: // パターンテーブル(下位)のフェッチ
 		address := p.getSpritePatternAddress(index, false)
-		p.spriteLatch.patternLower = p.ReadPPUMemory(address)
+		p.spriteLatch.patternLower = p.bus.ReadByte(address)
 	case 7: // パターンテーブル(上位)のフェッチ
 		address := p.getSpritePatternAddress(index, true)
-		p.spriteLatch.patternUpper = p.ReadPPUMemory(address)
+		p.spriteLatch.patternUpper = p.bus.ReadByte(address)
 	case 0: // ラッチ・セカンダリOAMからシフトレジスタへロード
 		basePtr := index * OAM_SPRITE_SIZE
 
@@ -555,7 +492,7 @@ func (p *PPU) renderPixel() {
 	var color rgb
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
-		color = PALETTE[p.paletteTable[0x00]]
+		color = PALETTE[p.bus.ReadPalette(0x00)]
 	case !bgOpaque && spOpaque: // 背景のみ透明
 		color = p.getSpriteColor(spAttributes, spPattern)
 	case bgOpaque && !spOpaque: // スプライトのみ透明
@@ -573,63 +510,7 @@ func (p *PPU) renderPixel() {
 	p.canvas.SetPixel(screenX, screenY, color)
 }
 
-// MARK: VRAMアドレスをミラーリング
-func (p *PPU) mirrorVRAMAddress(address uint16) uint16 {
-	/*
-		VRAM ネームテーブル
-		(範囲 / サイズ / 対象)
 
-		$2000-$2400 0x0400 画面1
-		$2400-$2800 0x0400 画面2
-	*/
-
-	vramAddress := address - 0x2000 // 先頭オフセットを引きVRAMのアドレスに変換
-	mirroring := p.mapper.Mirroring()
-
-	/*
-		ネームテーブルの位置を求める
-		[ 0 ][ 1 ]
-		[ 2 ][ 3 ]
-	*/
-	nameTableIndex := vramAddress / 0x0400
-
-	switch mirroring {
-	case mappers.MIRRORING_VERTICAL:
-		/*
-			[ A ][ B ] $2000 $2400
-			[ a ][ b ] $2800 $2C00
-
-			A: $2000
-			a: $2800 → $2000
-			B: $2400
-			b: $2C00 → $2400
-		*/
-
-		switch nameTableIndex {
-		case 2, 3:
-			vramAddress -= 0x0800
-		}
-	case mappers.MIRRORING_HORIZONTAL:
-		/*
-			[ A ][ a ] $2000 $2400
-			[ B ][ b ] $2800 $2C00
-
-			A: $2000
-			a: $2400 → $2000
-			B: $2800 → $2400
-			b: $2C00 → $2400
-		*/
-
-		switch nameTableIndex {
-		case 1, 2:
-			vramAddress -= 0x0400
-		case 3:
-			vramAddress -= 0x0800
-		}
-	}
-
-	return vramAddress
-}
 
 // MARK: VRAMアドレスのインクリメント
 func (p *PPU) incrementVRAMAddress() {
@@ -815,12 +696,12 @@ func (p *PPU) getSpritePixel() (pixel uint8, attributes uint8, isSpriteZero bool
 func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
-		paletteIndex := p.paletteTable[0x00]
+		paletteIndex := p.bus.ReadPalette(0x00)
 		return PALETTE[paletteIndex]
 	}
 
 	paletteTableIndex := ((attribute & 0x03) << 2) + pattern
-	paletteIndex := p.paletteTable[paletteTableIndex]
+	paletteIndex := p.bus.ReadPalette(paletteTableIndex)
 	return PALETTE[paletteIndex]
 }
 
@@ -828,13 +709,13 @@ func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
 func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) rgb {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
-		paletteIndex := p.paletteTable[0x00]
+		paletteIndex := p.bus.ReadPalette(0x00)
 		return PALETTE[paletteIndex]
 	}
 
 	// スプライトパレットの開始位置 0x10 をオフセットとして加算
 	paletteTableIndex := 0x10 + ((attributes & 0x03) << 2) + pattern
-	paletteIndex := p.paletteTable[paletteTableIndex]
+	paletteIndex := p.bus.ReadPalette(paletteTableIndex)
 	return PALETTE[paletteIndex]
 }
 

@@ -102,11 +102,14 @@ func main() {
 	// APUの作成
 	a := apu.NewAPU()
 
-	// PPUの作成
-	p := ppu.NewPPU(ct.Mapper(), &cv)
+	// PPU Busの作成
+	pb := ppu.NewPPUBus(ct.Mapper())
 
-	// Busの作成
-	b := bus.NewBus(ct.Mapper(), a, &p, &j1, &j2)
+	// PPUの作成
+	p := ppu.NewPPU(pb, &cv)
+
+	// CPU Busの作成
+	b := bus.NewCPUBus(ct.Mapper(), a, &p, &j1, &j2)
 
 	// APUにreaderをセット
 	a.SetMemoryReader(b.ReadByteFrom)
@@ -163,7 +166,7 @@ func main() {
 }
 
 // キーボードイベントの処理
-func handleKeyboardEvent(e *sdl.KeyboardEvent, b *bus.Bus) {
+func handleKeyboardEvent(e *sdl.KeyboardEvent, b *bus.CPUBus) {
 	pressed := (e.State == sdl.PRESSED)
 
 	// 1Pのキー割当て

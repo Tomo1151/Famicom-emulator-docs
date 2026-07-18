@@ -9,12 +9,12 @@ import (
 // MARK: CPUの定義
 type CPU struct {
 	registers      registers
-	bus            bus.Bus
+	bus            bus.CPUBus
 	instructionSet instructionSet
 }
 
 // MARK: CPUのコンストラクタ
-func NewCPU(bus bus.Bus) *CPU {
+func NewCPU(bus bus.CPUBus) *CPU {
 	cpu := &CPU{}
 
 	cpu.bus = bus

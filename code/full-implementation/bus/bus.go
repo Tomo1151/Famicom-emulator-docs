@@ -14,8 +14,8 @@ const (
 	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
-// MARK: Busの定義
-type Bus struct {
+// MARK: CPUBusの定義
+type CPUBus struct {
 	wram    [CPU_WRAM_SIZE]uint8 // CPUのWRAM
 	mapper  mappers.Mapper       // カートリッジ
 	apu     *apu.APU             // APU
@@ -26,9 +26,9 @@ type Bus struct {
 	cycles uint // CPUサイクル
 }
 
-// MARK: Busのコンストラクタ
-func NewBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
-	return Bus{
+// MARK: CPUBusのコンストラクタ
+func NewCPUBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) CPUBus {
+	return CPUBus{
 		mapper:  mapper,
 		apu:     apu,
 		ppu:     ppu,
@@ -38,20 +38,20 @@ func NewBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.J
 }
 
 // MARK: 各コンポーネントのクロックの更新
-func (b *Bus) Tick(cycles uint) {
+func (b *CPUBus) Tick(cycles uint) {
 	b.cycles += cycles
 	b.apu.Tick(cycles)
 	b.ppu.Tick(cycles * 3)
 }
 
 // MARK: 各コンポーネントのClose
-func (b *Bus) Shutdown() {
+func (b *CPUBus) Shutdown() {
 	b.apu.Close()
 	b.mapper.Save()
 }
 
 // MARK: メモリの読み取り (1バイト)
-func (b *Bus) ReadByteFrom(address uint16) uint8 {
+func (b *CPUBus) ReadByteFrom(address uint16) uint8 {
 	/*
 		CPU メモリマップ
 		(範囲 / サイズ / コンポーネント)
@@ -111,14 +111,14 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 }
 
 // MARK: メモリの読み取り (2バイト)
-func (b *Bus) ReadWordFrom(address uint16) uint16 {
+func (b *CPUBus) ReadWordFrom(address uint16) uint16 {
 	lower := b.ReadByteFrom(address)
 	upper := b.ReadByteFrom(address + 1)
 	return uint16(upper)<<8 | uint16(lower)
 }
 
 // MARK: メモリへの書き込み (1バイト)
-func (b *Bus) WriteByteAt(address uint16, value uint8) {
+func (b *CPUBus) WriteByteAt(address uint16, value uint8) {
 	/*
 		CPU メモリマップ
 		(範囲 / サイズ / コンポーネント)
@@ -200,7 +200,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 }
 
 // MARK: メモリへの書き込み (2バイト)
-func (b *Bus) WriteWordAt(address uint16, value uint16) {
+func (b *CPUBus) WriteWordAt(address uint16, value uint16) {
 	lower := uint8(value & 0xFF)
 	upper := uint8(value >> 8)
 	b.WriteByteAt(address, lower)
@@ -208,7 +208,7 @@ func (b *Bus) WriteWordAt(address uint16, value uint16) {
 }
 
 // MARK: JoyPadの取得
-func (b *Bus) JoyPad(player uint) *joypad.JoyPad {
+func (b *CPUBus) JoyPad(player uint) *joypad.JoyPad {
 	if player == 0 {
 		return b.joypad1
 	} else {
@@ -217,11 +217,11 @@ func (b *Bus) JoyPad(player uint) *joypad.JoyPad {
 }
 
 // MARK: NMI状態の取得
-func (b *Bus) NMI() bool {
+func (b *CPUBus) NMI() bool {
 	return b.ppu.PollNMI()
 }
 
 // MARK: マッパー割込みの取得
-func (b *Bus) MapperIRQ() bool {
+func (b *CPUBus) MapperIRQ() bool {
 	return b.mapper.IRQ()
 }
