@@ -103,7 +103,7 @@ func main() {
 	a := apu.NewAPU()
 
 	// PPU Busの作成
-	pb := ppu.NewPPUBus(ct.Mapper())
+	pb := bus.NewPPUBus(ct.Mapper())
 
 	// PPUの作成
 	p := ppu.NewPPU(pb, &cv)

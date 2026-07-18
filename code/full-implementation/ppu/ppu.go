@@ -1,20 +1,15 @@
 package ppu
 
-
+import (
+	"fc-emu/bus"
+)
 
 // MARK: 定数定義
 const (
-	PPU_VRAM_SIZE          = 2 * 1024             // 1024kB
-	PPU_PALETTE_TABLE_SIZE = 32                   // 32色 (背景/スプライト各16色ずつ)
 	PPU_PRIMARY_OAM_SIZE   = 64 * OAM_SPRITE_SIZE // 64スプライト
 	PPU_SECONDARY_OAM_SIZE = 8 * OAM_SPRITE_SIZE  // 8スプライト
 
-	PPU_ADDRESS_START      = 0x0000
-	PPU_ADDRESS_END        = 0xFFFF
 	PPU_VRAM_ADDRESS_SPACE = 0x4000
-
-	PPU_MEMORY_ADDRESS_MASK    = 0x3FFF // 14ビット
-	PPU_NAMETABLE_ADDRESS_MASK = 0x2FFF // ミラーリング直前のアドレス
 
 	TILE_SIZE        = 8 // 1タイルのサイズ (幅，高さ)
 	MAX_SPRITE_COUNT = 8 // スプライトの最大同時表示数
@@ -43,7 +38,7 @@ const (
 
 // MARK: PPUの定義
 type PPU struct {
-	bus          *PPUBus                       // PPU用メモリバス
+	bus          *bus.PPUBus                   // PPU用メモリバス
 	oam          [PPU_PRIMARY_OAM_SIZE]uint8   // Object Attribute Memory
 	secondaryOAM [PPU_SECONDARY_OAM_SIZE]uint8 // Secondary OAM
 
@@ -64,7 +59,7 @@ type PPU struct {
 	spriteLatch     SpriteLatch
 	spriteShifts    [8]SpriteShiftRegister
 
-	canvas *Canvas        // 描画キャンバスの参照
+	canvas *Canvas // 描画キャンバスの参照
 
 	dot             uint
 	scanline        uint
@@ -78,7 +73,7 @@ type PPU struct {
 }
 
 // MARK: PPUのコンストラクタ
-func NewPPU(bus *PPUBus, canvas *Canvas) PPU {
+func NewPPU(bus *bus.PPUBus, canvas *Canvas) PPU {
 	return PPU{
 		control:         NewControlRegister(),
 		mask:            NewMaskRegister(),
@@ -146,16 +141,16 @@ func (p *PPU) ReadOAMData() uint8 {
 
 // MARK: PPUデータの読み取り (CPU: $2007)
 func (p *PPU) ReadPPUData() uint8 {
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	address := p.v.ToByte() & bus.PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
 	p.incrementVRAMAddress()
 
 	// CPUからの読み取りは内部バッファにより一回分遅延する
 	value := p.dataBuffer
-	p.dataBuffer = p.bus.ReadByte(address)
+	p.dataBuffer = p.bus.ReadByteFrom(address)
 
 	// パレットテーブルのみ遅延無しで読み取り
 	if 0x3F00 <= address && address <= 0x3FFF {
-		value = p.bus.ReadByte(address)
+		value = p.bus.ReadByteFrom(address)
 	}
 
 	return value
@@ -214,9 +209,9 @@ func (p *PPU) WritePPUAddress(value uint8) {
 
 // MARK: PPUデータの書き込み (CPU: $2007)
 func (p *PPU) WritePPUData(value uint8) {
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	address := p.v.ToByte() & bus.PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
 	p.incrementVRAMAddress()
-	p.bus.WriteByte(address, value)
+	p.bus.WriteByteAt(address, value)
 }
 
 // MARK: DMA転送の実行 (CPU: $4014)
@@ -263,7 +258,7 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 
 	// マッパー割り込みの生成
 	if p.dot == 260 {
-		p.bus.mapper.GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
+		p.bus.Mapper().GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
 	}
 
 	// スプライトフェッチ
@@ -396,21 +391,21 @@ func (p *PPU) fetchBackground() {
 	switch p.dot % TILE_SIZE {
 	case 1: // ネームテーブルのフェッチ
 		nameTableAddress := p.getNameTableAddress()
-		tile := p.bus.ReadByte(nameTableAddress)
+		tile := p.bus.ReadByteFrom(nameTableAddress)
 		p.backgroundLatch.nameTable = tile
 	case 3: // 属性テーブルのフェッチ
 		attributeTableAddress := p.getAttributeTableAddress()
-		attribute := p.bus.ReadByte(attributeTableAddress)
+		attribute := p.bus.ReadByteFrom(attributeTableAddress)
 		// Vレジスタの位置に応じて該当する2ビットを抽出する
 		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
 		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
 	case 5: // パターンテーブル(下位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(false)
-		pattern := p.bus.ReadByte(patternTableAddress)
+		pattern := p.bus.ReadByteFrom(patternTableAddress)
 		p.backgroundLatch.patternLower = pattern
 	case 7: // パターンテーブル(上位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(true)
-		pattern := p.bus.ReadByte(patternTableAddress)
+		pattern := p.bus.ReadByteFrom(patternTableAddress)
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
 		p.backgroundShift.load(&p.backgroundLatch)
@@ -436,10 +431,10 @@ func (p *PPU) fetchSprite(index uint) {
 	switch p.dot % TILE_SIZE {
 	case 5: // パターンテーブル(下位)のフェッチ
 		address := p.getSpritePatternAddress(index, false)
-		p.spriteLatch.patternLower = p.bus.ReadByte(address)
+		p.spriteLatch.patternLower = p.bus.ReadByteFrom(address)
 	case 7: // パターンテーブル(上位)のフェッチ
 		address := p.getSpritePatternAddress(index, true)
-		p.spriteLatch.patternUpper = p.bus.ReadByte(address)
+		p.spriteLatch.patternUpper = p.bus.ReadByteFrom(address)
 	case 0: // ラッチ・セカンダリOAMからシフトレジスタへロード
 		basePtr := index * OAM_SPRITE_SIZE
 
@@ -510,13 +505,11 @@ func (p *PPU) renderPixel() {
 	p.canvas.SetPixel(screenX, screenY, color)
 }
 
-
-
 // MARK: VRAMアドレスのインクリメント
 func (p *PPU) incrementVRAMAddress() {
 	step := uint16(p.control.VRAMAddressIncrement())
 	address := (p.v.ToByte() + step)
-	p.v.SetFromWord(address & PPU_MEMORY_ADDRESS_MASK)
+	p.v.SetFromWord(address & bus.PPU_MEMORY_ADDRESS_MASK)
 }
 
 // MARK: サイクルを進める

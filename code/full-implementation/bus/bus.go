@@ -4,7 +4,6 @@ import (
 	"fc-emu/apu"
 	"fc-emu/cartridge/mappers"
 	"fc-emu/joypad"
-	"fc-emu/ppu"
 )
 
 const (
@@ -14,12 +13,31 @@ const (
 	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
+// PPU は CPU バスから PPU を制御するためのインターフェースです
+type PPU interface {
+	Tick(cycles uint)
+	ReadPPUControl() uint8
+	ReadPPUMask() uint8
+	ReadPPUStatus() uint8
+	ReadOAMData() uint8
+	ReadPPUData() uint8
+	WritePPUControl(value uint8)
+	WritePPUMask(value uint8)
+	WriteOAMAddress(value uint8)
+	WriteOAMData(value uint8)
+	WritePPUScroll(value uint8)
+	WritePPUAddress(value uint8)
+	WritePPUData(value uint8)
+	DMATransfer(bytes *[256]uint8)
+	PollNMI() bool
+}
+
 // MARK: CPUBusの定義
 type CPUBus struct {
 	wram    [CPU_WRAM_SIZE]uint8 // CPUのWRAM
 	mapper  mappers.Mapper       // カートリッジ
 	apu     *apu.APU             // APU
-	ppu     *ppu.PPU             // PPU
+	ppu     PPU                  // PPU
 	joypad1 *joypad.JoyPad       // コントローラ (1P)
 	joypad2 *joypad.JoyPad       // コントローラ (2P)
 
@@ -27,7 +45,7 @@ type CPUBus struct {
 }
 
 // MARK: CPUBusのコンストラクタ
-func NewCPUBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) CPUBus {
+func NewCPUBus(mapper mappers.Mapper, apu *apu.APU, ppu PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) CPUBus {
 	return CPUBus{
 		mapper:  mapper,
 		apu:     apu,
