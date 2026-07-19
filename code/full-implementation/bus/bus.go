@@ -6,14 +6,15 @@ import (
 	"fc-emu/joypad"
 )
 
+// MARK: 定数定義
 const (
-	CPU_WRAM_SIZE = 2 * 1024 // 2kB
+	CPU_WRAM_SIZE = 2 * 1024 // 2kBのWRAM
 
 	CPU_ADDRESS_START uint16 = 0x0000
 	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
-// PPU は CPU バスから PPU を制御するためのインターフェースです
+// CPU バスから PPU を制御するためのインターフェース
 type PPU interface {
 	Tick(cycles uint)
 	ReadPPUControl() uint8
