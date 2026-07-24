@@ -1,6 +1,8 @@
 package ppu
 
 import (
+	"github.com/veandco/go-sdl2/sdl"
+
 	"fc-emu/cartridge/mappers"
 )
 
@@ -10,6 +12,10 @@ const (
 	PPU_PALETTE_TABLE_SIZE = 32                   // 32色 (背景/スプライト各16色ずつ)
 	PPU_PRIMARY_OAM_SIZE   = 64 * OAM_SPRITE_SIZE // 64スプライト
 	PPU_SECONDARY_OAM_SIZE = 8 * OAM_SPRITE_SIZE  // 8スプライト
+
+	PPU_ADDRESS_START      = 0x0000
+	PPU_ADDRESS_END        = 0xFFFF
+	PPU_VRAM_ADDRESS_SPACE = 0x4000
 
 	PPU_MEMORY_ADDRESS_MASK    = 0x3FFF // 14ビット
 	PPU_NAMETABLE_ADDRESS_MASK = 0x2FFF // ミラーリング直前のアドレス
@@ -176,7 +182,7 @@ func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
+	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR ROM)
 		return p.mapper.ReadCharacterROM(address)
 	case 0x2000 <= address && address <= 0x3EFF: // ネームテーブル (VRAM)
 		vramAddress := p.mirrorVRAMAddress(address & PPU_NAMETABLE_ADDRESS_MASK)
@@ -261,7 +267,7 @@ func (p *PPU) WritePPUData(value uint8) {
 	p.incrementVRAMAddress()
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
+	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
 		if p.mapper.IsCharacterRAM() {
 			p.mapper.WriteCharacterRAM(address, value)
 		}
@@ -543,7 +549,7 @@ func (p *PPU) renderPixel() {
 	}
 
 	// 優先順位に基づいて色を決定
-	var color rgb
+	var color sdl.Color
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
 		color = PALETTE[p.paletteTable[0x00]]
@@ -803,7 +809,7 @@ func (p *PPU) getSpritePixel() (pixel uint8, attributes uint8, isSpriteZero bool
 }
 
 // MARK: 属性情報とピクセルの値から色を取得するメソッド
-func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
+func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
 		paletteIndex := p.paletteTable[0x00]
@@ -816,7 +822,7 @@ func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
 }
 
 // MARK: 属性情報とピクセルの値からスプライトの色を取得するメソッド
-func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) rgb {
+func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
 		paletteIndex := p.paletteTable[0x00]

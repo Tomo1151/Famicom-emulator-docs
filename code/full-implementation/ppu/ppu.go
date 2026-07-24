@@ -1,6 +1,8 @@
 package ppu
 
 import (
+	"github.com/veandco/go-sdl2/sdl"
+
 	"fc-emu/cartridge/mappers"
 )
 
@@ -552,7 +554,7 @@ func (p *PPU) renderPixel() {
 	}
 
 	// 優先順位に基づいて色を決定
-	var color rgb
+	var color sdl.Color
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
 		color = PALETTE[p.paletteTable[0x00]]
@@ -812,7 +814,7 @@ func (p *PPU) getSpritePixel() (pixel uint8, attributes uint8, isSpriteZero bool
 }
 
 // MARK: 属性情報とピクセルの値から色を取得するメソッド
-func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
+func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
 		paletteIndex := p.paletteTable[0x00]
@@ -825,7 +827,7 @@ func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) rgb {
 }
 
 // MARK: 属性情報とピクセルの値からスプライトの色を取得するメソッド
-func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) rgb {
+func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
 		paletteIndex := p.paletteTable[0x00]
