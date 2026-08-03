@@ -102,6 +102,9 @@ func (a *APU) Tick(cycles uint) {
 		a.channel3.Tick()
 		a.channel4.Tick()
 		a.channel5.Tick()
+		if a.channel5.PollIRQ() {
+			a.status.SetDMCIRQ(true)
+		}
 
 		// CPUサイクルをサンプリングレートに変換
 		if a.phase >= CYCLES_PER_SAMPLE {
@@ -345,6 +348,11 @@ func (a *APU) tickSweepUnits() {
 // MARK: フレームカウンタ割り込みの取得
 func (a *APU) FrameIRQ() bool {
 	return a.status.FrameIRQ()
+}
+
+// MARK: APU IRQの取得
+func (a *APU) IRQ() bool {
+	return a.status.FrameIRQ() || a.status.DMCIRQ()
 }
 
 // MARK: 各チャンネルのサンプルを適切なバランスでミックスする関数

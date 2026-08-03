@@ -79,7 +79,11 @@ type PPU struct {
 	spriteCount     uint
 	spriteZeroIndex uint
 	nmi             bool
+	nmiCounter      uint
+	nmiSuppress     bool
+	isOddFrame      bool
 
+	debug bool
 	frame uint64
 }
 
@@ -102,16 +106,19 @@ func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
 		spriteCount:     0,
 		spriteZeroIndex: SPRITE_ZERO_NOT_FOUND,
 		nmi:             false,
+		nmiCounter:      0,
+		nmiSuppress:     false,
+		isOddFrame:      false,
 		frame:           0,
 	}
 }
 
 // MARK: PPUクロックの更新
 func (p *PPU) Tick(cycles uint) {
-	// 描画設定を取得
-	isRenderingEnabled := p.mask.backgroundEnable || p.mask.spriteEnable
-
 	for range cycles {
+		// 描画設定を取得
+		isRenderingEnabled := p.mask.backgroundEnable || p.mask.spriteEnable
+
 		// スキャンライン位置によって処理
 		switch {
 		case SCANLINE_START <= p.scanline && p.scanline < SCANLINE_POSTRENDER:
@@ -120,6 +127,12 @@ func (p *PPU) Tick(cycles uint) {
 			p.tickVBlankScanline()
 		case p.scanline == SCANLINE_PRERENDER:
 			p.tickPreRenderScanline(isRenderingEnabled)
+		}
+
+		// 奇数フレームで背景描画が有効の場合は1サイクルスキップされる
+		if p.scanline == SCANLINE_PRERENDER && p.dot == 339 &&
+			p.isOddFrame && p.mask.backgroundEnable {
+			p.dot++
 		}
 
 		// サイクル, スキャンラインを進める
@@ -140,6 +153,9 @@ func (p *PPU) ReadPPUMask() uint8 {
 // MARK: PPUステータスレジスタの読み取り (CPU: $2002)
 func (p *PPU) ReadPPUStatus() uint8 {
 	status := p.status.ToByte()
+	if p.scanline == SCANLINE_VBLANK && p.dot == 0 {
+		p.nmiSuppress = true
+	}
 	p.status.SetVBlank(false) // 読み取りでVBlankフラグとラッチがクリアされる
 	p.w.reset()
 	return status
@@ -152,7 +168,7 @@ func (p *PPU) ReadOAMData() uint8 {
 
 // MARK: PPUデータの読み取り (CPU: $2007)
 func (p *PPU) ReadPPUData() uint8 {
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
 	p.incrementVRAMAddress()
 
 	// CPUからの読み取りは内部バッファにより一回分遅延する
@@ -162,6 +178,7 @@ func (p *PPU) ReadPPUData() uint8 {
 	// パレットテーブルのみ遅延無しで読み取り
 	if 0x3F00 <= address && address <= 0x3FFF {
 		value = p.ReadPPUMemory(address)
+		p.dataBuffer = p.ReadPPUMemory(address & PPU_NAMETABLE_ADDRESS_MASK)
 	}
 
 	return value
@@ -208,6 +225,10 @@ func (p *PPU) WritePPUControl(value uint8) {
 	// VBlank中にGenerateNMIがセットされたタイミングでNMIが発生
 	if !prev && p.control.GenerateNMI() && p.status.VBlank() {
 		p.nmi = true
+		p.nmiCounter = 1
+	} else if prev && !p.control.GenerateNMI() && p.nmiCounter > 0 {
+		p.nmi = false
+		p.nmiCounter = 0
 	}
 }
 
@@ -251,6 +272,13 @@ func (p *PPU) WritePPUAddress(value uint8) {
 
 // MARK: PPUデータの書き込み (CPU: $2007)
 func (p *PPU) WritePPUData(value uint8) {
+	address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	p.incrementVRAMAddress()
+	p.WritePPUMemory(address, value)
+}
+
+// MARK: PPUメモリマップへの書き込み
+func (p *PPU) WritePPUMemory(address uint16, value uint8) {
 	/*
 		PPU メモリマップ
 		(範囲 / サイズ / 対象)
@@ -262,9 +290,6 @@ func (p *PPU) WritePPUData(value uint8) {
 		$3F20-$3FFF 0x00E0 パレットテーブルのミラーリング
 		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
 	*/
-
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
-	p.incrementVRAMAddress()
 
 	switch {
 	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
@@ -324,6 +349,7 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 	}
 	if p.dot == 257 {
 		p.t.copyHorizontalBitsTo(&p.v)
+		p.oamAddress = 0x00
 	}
 
 	// マッパー割り込みの生成
@@ -338,11 +364,16 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 // MARK: VBlankラインの処理
 func (p *PPU) tickVBlankScanline() {
 	if p.dot == 1 {
-		// ラインの先頭でVBlankフラグを立てる
-		p.status.SetVBlank(true)
-		if p.control.GenerateNMI() {
-			p.nmi = true
+		if !p.nmiSuppress {
+			// ラインの先頭でVBlankフラグを立てる
+			p.status.SetVBlank(true)
+			// fmt.Printf("VBlank %d,%d\n", p.scanline, p.dot)
+			if p.control.GenerateNMI() {
+				p.nmi = true
+				p.nmiCounter = 3
+			}
 		}
+		p.nmiSuppress = false
 	}
 }
 
@@ -369,6 +400,7 @@ func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
 	}
 	if p.dot == 257 {
 		p.t.copyHorizontalBitsTo(&p.v)
+		p.oamAddress = 0x00
 	}
 	if 280 <= p.dot && p.dot <= 304 {
 		p.t.copyVerticalBitsTo(&p.v)
@@ -429,11 +461,6 @@ func (p *PPU) fetchBackgroundPipeline() {
 		// 背景パターンのフェッチ
 		p.backgroundShift.shift()
 		p.fetchBackground()
-
-		// 8ドット毎にVレジスタの水平アドレスをインクリメント
-		if p.dot%TILE_SIZE == 0 {
-			p.v.incrementHorizontal()
-		}
 	}
 }
 
@@ -479,6 +506,7 @@ func (p *PPU) fetchBackground() {
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
 		p.backgroundShift.load(&p.backgroundLatch)
+		p.v.incrementHorizontal()
 	}
 }
 
@@ -557,7 +585,16 @@ func (p *PPU) renderPixel() {
 	var color sdl.Color
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
-		color = PALETTE[p.paletteTable[0x00]]
+		address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK
+		if !p.mask.backgroundEnable && !p.mask.spriteEnable && 0x3F00 <= address && address <= 0x3FFF {
+			paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+			if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
+				paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
+			}
+			color = PALETTE[p.paletteTable[paletteTableIndex]]
+		} else {
+			color = PALETTE[p.paletteTable[0x00]]
+		}
 	case !bgOpaque && spOpaque: // 背景のみ透明
 		color = p.getSpriteColor(spAttributes, spPattern)
 	case bgOpaque && !spOpaque: // スプライトのみ透明
@@ -636,7 +673,7 @@ func (p *PPU) mirrorVRAMAddress(address uint16) uint16 {
 // MARK: VRAMアドレスのインクリメント
 func (p *PPU) incrementVRAMAddress() {
 	step := uint16(p.control.VRAMAddressIncrement())
-	address := (p.v.ToByte() + step)
+	address := (p.v.ToWord() + step)
 	p.v.SetFromWord(address & PPU_MEMORY_ADDRESS_MASK)
 }
 
@@ -644,6 +681,10 @@ func (p *PPU) incrementVRAMAddress() {
 func (p *PPU) incrementCycles() {
 	// ドットを進める
 	p.dot++
+	if p.nmiCounter > 0 {
+		p.nmiCounter--
+	}
+
 	// 端に達したらドットを0に戻しスキャンラインを進める
 	if p.dot > SCANLINE_END {
 		p.dot = 0
@@ -653,6 +694,7 @@ func (p *PPU) incrementCycles() {
 		if p.scanline > SCANLINE_PRERENDER {
 			p.scanline = 0
 			p.frame++
+			p.isOddFrame = !p.isOddFrame
 		}
 	}
 }
@@ -671,7 +713,7 @@ func (p *PPU) getNameTableAddress() uint16 {
 		基準となるネームテーブルの始点 ($2000 | $2400 | $2800 | $2C00) と
 		Vレジスタの下位12ビット(NN YYYYY XXXXX)の論理和で現在の行・列のアドレスが求まる
 	*/
-	return 0x2000 | (p.v.ToByte() & 0x0FFF)
+	return 0x2000 | (p.v.ToWord() & 0x0FFF)
 }
 
 // MARK: Vレジスタから描画中の属性テーブルのアドレスを取得
@@ -683,7 +725,7 @@ func (p *PPU) getAttributeTableAddress() uint16 {
 		(v >> 2) & 0x07: X座標 (列) をメタタイル単位(4列ごと)に変換
 	*/
 
-	v := p.v.ToByte()
+	v := p.v.ToWord()
 	return 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
 }
 
@@ -691,7 +733,7 @@ func (p *PPU) getAttributeTableAddress() uint16 {
 func (p *PPU) getBackgroundPatternAddress(isUpper bool) uint16 {
 	base := p.control.BackgroundPatternTableAddress()
 	tile := p.backgroundLatch.nameTable
-	fineY := (p.v.ToByte() >> 12) & 0x07
+	fineY := (p.v.ToWord() >> 12) & 0x07
 	offset := 0
 	if isUpper {
 		offset = TILE_SIZE
@@ -842,8 +884,9 @@ func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) sdl.Color {
 
 // MARK: 待機中のNMI状態をチェックするメソッド
 func (p *PPU) PollNMI() bool {
-	if p.nmi {
+	if p.nmi && p.nmiCounter == 0 {
 		p.nmi = false
+		p.nmiCounter = 0
 		return true
 	} else {
 		return false

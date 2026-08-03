@@ -254,12 +254,11 @@ $01) passed
 
 Tests PPU VRAM read/write and internal read buffer operation
 
-$06) Palette read should also read VRAM into read buffer
+$01) passed
 
 ### full_nes_palette.nes
 
-青が4色くらいで四分割くらいになっている
-色強調はまだ未実装
+passed
 
 ### nmi_sync / demo_ntsc.nes
 
@@ -334,10 +333,7 @@ passed
 
 #### 07.screen_bottom.nes
 
-Tests sprite 0 hit with regard to bottom of screen.
-
-Failed #3
-$03) Can hit when Y < 239
+passed
 
 #### 08.double_height.nes
 
@@ -345,22 +341,11 @@ passed
 
 #### 09.timing_basics.nes
 
-Tests sprite 0 hit timing to within 12 or so PPU clocks. Tests flag
-timing for upper-left corner, upper-right corner, lower-right corner,
-and time flag is cleared (at end of VBL). Depends on proper PPU frame
-length (less than 29781 CPU clocks).
-
-Failed #3
-$03) Upper-left corner too late
+passed
 
 #### 10.timing_order.nes
 
-Tests sprite 0 hit timing for which pixel it first reports hit on. Each
-test hits at the same location on screen, though different relative to
-the position of the sprite.
-
-Failed #3
-$03) Upper-left corner too late
+passed
 
 #### 11.edge_timing.nes
 
@@ -384,8 +369,7 @@ passed
 Tests timing of sprite overflow flag. The tests fail if timing is off by
 more than a CPU clock or two.
 
-Failed #2
-$02) Cleared too late
+6) Sprite horizontal positions should have no effect on timing
 
 #### 4.Obscure.nes
 
@@ -428,10 +412,7 @@ passed
 
 #### 1.frame_basics.nes
 
-Tests basic VBL flag operation and general timing of PPU frames.
-
-Failed #5
-$05) PPU frame with BG enabled is too long
+passed
 
 #### 2.vbl_timing.nes
 
@@ -453,8 +434,6 @@ $03) Pattern BB--- should skip 1 clock
 
 #### 4.vbl_clear_timing.nes
 
-Tests timing of VBL flag clearing.
-
 passed
 
 #### 5.nmi_suppression.nes
@@ -467,17 +446,10 @@ $03) Reading flag when it's set should suppress NMI
 
 #### 6.nmi_disable.nes
 
-Tests NMI occurrence when disabling NMI just as VBL flag is set, and
-just after.
-
-Failed #2
-$02) NMI should occur when disabled 3 PPU clocks after VBL
+passed
 
 #### 7.nmi_timing.nes
 
-Tests timing of NMI and immediate occurrence when enabled with VBL flag
-already set.
-
-$03) NMI occurred 2 PPU clocks too early
+passed
 
 ## APU

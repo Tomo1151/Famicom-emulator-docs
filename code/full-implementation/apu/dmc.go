@@ -141,6 +141,15 @@ func (dmc *DeltaModulationChannel) Output() float32 {
 	return dmc.output
 }
 
+// MARK: IRQの取得
+func (dmc *DeltaModulationChannel) PollIRQ() bool {
+	if dmc.irq {
+		dmc.irq = false
+		return true
+	}
+	return false
+}
+
 // MARK: 状態のリロード
 func (dmc *DeltaModulationChannel) reload() {
 	// レジスタからセットされた時のデータをリロード

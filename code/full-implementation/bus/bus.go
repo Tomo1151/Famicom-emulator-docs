@@ -81,10 +81,6 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	switch {
 	case CPU_ADDRESS_START <= address && address <= 0x1FFF: // CPU WRAM
 		return b.wram[address&0x07FF] // 2kBでミラーリング
-	case address == 0x2000: // PPU CTRL
-		return b.ppu.ReadPPUControl()
-	case address == 0x2001: // PPU MASK
-		return b.ppu.ReadPPUMask()
 	case address == 0x2002: // PPU STATUS
 		return b.ppu.ReadPPUStatus()
 	case address == 0x2004: // OAM DATA
@@ -173,6 +169,13 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 			buffer[i] = b.ReadByteFrom(upper | uint16(i))
 		}
 		b.ppu.DMATransfer(&buffer)
+
+		// DMA 転送は513/514サイクルを消費する
+		dmaCycles := uint(513)
+		if b.cycles%2 != 0 {
+			dmaCycles = 514
+		}
+		b.Tick(dmaCycles)
 	case address == 0x4016: // コントローラ (1P/2P)
 		b.joypad1.WriteJoyPad(value)
 		b.joypad2.WriteJoyPad(value)
@@ -224,4 +227,9 @@ func (b *Bus) NMI() bool {
 // MARK: マッパー割込みの取得
 func (b *Bus) MapperIRQ() bool {
 	return b.mapper.IRQ()
+}
+
+// MARK: APU割り込みの取得
+func (b *Bus) APUIRQ() bool {
+	return b.apu.IRQ()
 }
