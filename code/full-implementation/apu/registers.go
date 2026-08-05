@@ -564,7 +564,10 @@ func (dsr *DMCShiftRegisteer) shift() uint8 {
 	value := dsr.value & 0x01
 
 	dsr.value >>= 1
-	dsr.remaining--
+
+	if dsr.remaining > 0 {
+		dsr.remaining--
+	}
 
 	return value
 }

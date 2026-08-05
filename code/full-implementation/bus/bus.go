@@ -233,3 +233,7 @@ func (b *Bus) MapperIRQ() bool {
 func (b *Bus) APUIRQ() bool {
 	return b.apu.IRQ()
 }
+
+func (b *Bus) DMCRead(address uint16) uint8 {
+	return b.ReadByteFrom(address)
+}

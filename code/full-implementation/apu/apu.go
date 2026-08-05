@@ -184,7 +184,7 @@ func (a *APU) ReadStatus() uint8 {
 	if !a.channel4.lengthCounter.Muted() {
 		status |= 1 << STATUS_REG_IS_4CH_ACTIVE_POS
 	}
-	if a.channel5.bytesLeft > 0 {
+	if a.channel5.IsActive() {
 		status |= 1 << STATUS_REG_IS_5CH_ACTIVE_POS
 	}
 	if a.status.FrameIRQ() {

@@ -109,7 +109,7 @@ func main() {
 	b := bus.NewBus(ct.Mapper(), a, &p, &j1, &j2)
 
 	// APUにreaderをセット
-	a.SetMemoryReader(b.ReadByteFrom)
+	a.SetMemoryReader(b.DMCRead)
 
 	// CPUの作成
 	c := cpu.NewCPU(b)
