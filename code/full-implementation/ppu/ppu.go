@@ -42,7 +42,8 @@ const (
 )
 
 const (
-	SPRITE_ZERO_NOT_FOUND = 0xFF
+	COLOR_EMPHASIZE_FACTOR = 0.75
+	SPRITE_ZERO_NOT_FOUND  = 0xFF
 )
 
 // MARK: PPUの定義
@@ -609,7 +610,7 @@ func (p *PPU) renderPixel() {
 	}
 
 	// 決定した色を描画
-	p.canvas.SetPixel(screenX, screenY, color)
+	p.canvas.SetPixel(screenX, screenY, p.getEmphasizedColor(color))
 }
 
 // MARK: VRAMアドレスをミラーリング
@@ -880,6 +881,29 @@ func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) sdl.Color {
 	paletteTableIndex := 0x10 + ((attributes & 0x03) << 2) + pattern
 	paletteIndex := p.paletteTable[paletteTableIndex]
 	return PALETTE[paletteIndex]
+}
+
+// MARK: マスクレジスタの値から色強調を反映した色を取得するメソッド
+func (p *PPU) getEmphasizedColor(baseColor sdl.Color) sdl.Color {
+	if !p.mask.emphasizeRed && !p.mask.emphasizeGreen && !p.mask.emphasizeBlue {
+		return baseColor
+	}
+
+	r := baseColor.R
+	g := baseColor.G
+	b := baseColor.B
+
+	if !p.mask.emphasizeRed {
+		r = uint8(float32(r) * COLOR_EMPHASIZE_FACTOR)
+	}
+	if !p.mask.emphasizeGreen {
+		g = uint8(float32(g) * COLOR_EMPHASIZE_FACTOR)
+	}
+	if !p.mask.emphasizeBlue {
+		b = uint8(float32(b) * COLOR_EMPHASIZE_FACTOR)
+	}
+
+	return sdl.Color{R: r, G: g, B: b}
 }
 
 // MARK: 待機中のNMI状態をチェックするメソッド
