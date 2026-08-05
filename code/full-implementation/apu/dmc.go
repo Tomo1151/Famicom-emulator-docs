@@ -37,6 +37,7 @@ func NewDeltaModulationChannel() *DeltaModulationChannel {
 		bytesLeft:     0x0000,
 		irqEnabled:    false,
 		loop:          false,
+		irq:           false,
 		output:        0.0,
 	}
 }
@@ -48,7 +49,9 @@ func (dmc *DeltaModulationChannel) Tick() {
 		dmc.timer--
 	} else {
 		// タイマのリセット
-		dmc.timer = dmc.timerPeriod
+		if dmc.timerPeriod > 0 {
+			dmc.timer = dmc.timerPeriod - 1
+		}
 
 		// シフトレジスタが空になった時
 		if dmc.shiftRegister.isEmpty() {
@@ -72,9 +75,16 @@ func (dmc *DeltaModulationChannel) Tick() {
 				// 最後まで再生したとき
 				if dmc.bytesLeft == 0 {
 					// ループフラグが有効であればリロード
-					if dmc.register.loop {
+					if dmc.loop {
+						// fmt.Printf(
+						// 	"bytesLeft=%d loop=%v irq=%v\n",
+						// 	dmc.bytesLeft,
+						// 	dmc.loop,
+						// 	dmc.irqEnabled,
+						// )
+						// fmt.Println("[DMC.Tick] dmc.reload()")
 						dmc.reload()
-					} else if dmc.register.irqEnabled {
+					} else if dmc.irqEnabled {
 						dmc.irq = true
 					}
 				}
@@ -103,7 +113,7 @@ func (dmc *DeltaModulationChannel) Tick() {
 // MARK: DMCの書き込み
 func (dmc *DeltaModulationChannel) write(address uint16, value uint8) {
 	dmc.register.write(address, value)
-
+	// fmt.Printf("loop=%v irq=%v\n", dmc.loop, dmc.irqEnabled)
 	switch address {
 	case 0x4010:
 		/*
@@ -115,6 +125,11 @@ func (dmc *DeltaModulationChannel) write(address uint16, value uint8) {
 		dmc.irqEnabled = (value&0x80 != 0)
 		dmc.loop = (value&0x40 != 0)
 		dmc.timerPeriod = DMC_PITCH_TABLE[(value & 0x0F)]
+
+		// IRQが無効になったら即座にIRQフラグをクリアする
+		if !dmc.irqEnabled {
+			dmc.irq = false
+		}
 	case 0x4011:
 		/*
 			$4011 書き込み
@@ -126,13 +141,13 @@ func (dmc *DeltaModulationChannel) write(address uint16, value uint8) {
 			$4012 書き込み
 			- サンプルアドレス
 		*/
-		dmc.sampleAddress = 0xC000 + uint16(value)<<6
+		// fmt.Printf("$4012 <- %04X\n", value)
 	case 0x4013:
 		/*
 			$4013 書き込み
 			- サンプル長
 		*/
-		dmc.bytesLeft = uint(value)<<4 + 1
+		// fmt.Printf("$4013 <- %04X\n", value)
 	}
 }
 
@@ -141,20 +156,41 @@ func (dmc *DeltaModulationChannel) Output() float32 {
 	return dmc.output
 }
 
-// MARK: IRQの取得
-func (dmc *DeltaModulationChannel) PollIRQ() bool {
-	if dmc.irq {
-		dmc.irq = false
-		return true
-	}
-	return false
-}
-
 // MARK: 状態のリロード
 func (dmc *DeltaModulationChannel) reload() {
+	// fmt.Printf("DMC reloaded: bytes left %04d -> %04d\n", dmc.bytesLeft, (uint(dmc.register.sampleLength<<4) + 1))
 	// レジスタからセットされた時のデータをリロード
-	dmc.sampleAddress = 0xC000 + (uint16(dmc.register.sampleAddress) << 4)
+	dmc.sampleAddress = 0xC000 + (uint16(dmc.register.sampleAddress) << 6)
 	dmc.bytesLeft = (uint(dmc.register.sampleLength) << 4) + 1
+}
+
+// MARK: DMCの再生/停止
+func (dmc *DeltaModulationChannel) SetEnabled(enabled bool) {
+	if enabled {
+		// DMCが有効で，停止している場合は最初から再生開始
+		if dmc.bytesLeft == 0 {
+			// fmt.Println("[DMC.SetEnabled] dmc.reload()")
+			dmc.reload()
+		}
+	} else {
+		// DMCが向こうの場合は停止
+		dmc.bytesLeft = 0
+	}
+}
+
+// MARK: IRQフラグの取得
+func (dmc *DeltaModulationChannel) IRQ() bool {
+	return dmc.irq
+}
+
+// MARK: IRQフラグのセット
+func (dmc *DeltaModulationChannel) SetIRQ(value bool) {
+	dmc.irq = value
+}
+
+// MARK: DMCの再生状態取得
+func (dmc *DeltaModulationChannel) IsActive() bool {
+	return dmc.bytesLeft > 0
 }
 
 // MARK: MemoryReaderのセット

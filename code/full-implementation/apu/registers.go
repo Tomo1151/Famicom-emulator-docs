@@ -519,7 +519,7 @@ type FrameCounter struct {
 func NewFrameCounter() FrameCounter {
 	return FrameCounter{
 		disableIRQ:    true,
-		sequencerMode: true,
+		sequencerMode: false,
 	}
 }
 
@@ -577,6 +577,7 @@ func (dsr *DMCShiftRegisteer) Value() uint8 {
 // MARK: DMCシフトレジスタの出力値をセット
 func (dsr *DMCShiftRegisteer) SetValue(value uint8) {
 	dsr.value = value
+	dsr.remaining = 8
 }
 
 // MARK: 残りビット数の取得

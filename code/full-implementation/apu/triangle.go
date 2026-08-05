@@ -57,7 +57,7 @@ func (twc *TriangleWaveChannel) Tick() {
 }
 
 // MARK: 三角波チャンネルの書き込み
-func (twc *TriangleWaveChannel) write(address uint16, value uint8) {
+func (twc *TriangleWaveChannel) write(address uint16, value uint8, isActive bool) {
 	twc.register.write(address, value)
 
 	switch address {
@@ -84,7 +84,9 @@ func (twc *TriangleWaveChannel) write(address uint16, value uint8) {
 			- 長さカウンタ
 		*/
 		twc.timerPeriod = uint16(twc.register.timerUpper)<<8 | (twc.timerPeriod & 0x00FF)
-		twc.lengthCounter.load(twc.register.lengthCounterLoad)
+		if isActive {
+			twc.lengthCounter.load(twc.register.lengthCounterLoad)
+		}
 
 		/*
 			副作用

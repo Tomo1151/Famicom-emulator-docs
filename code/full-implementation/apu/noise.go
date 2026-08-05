@@ -62,7 +62,7 @@ func (nwc *NoiseWaveChannel) Tick() {
 }
 
 // MARK: ノイズチャンネルの書き込み
-func (nwc *NoiseWaveChannel) write(address uint16, value uint8) {
+func (nwc *NoiseWaveChannel) write(address uint16, value uint8, isActive bool) {
 	nwc.register.write(address, value)
 
 	switch address {
@@ -97,7 +97,9 @@ func (nwc *NoiseWaveChannel) write(address uint16, value uint8) {
 			$400F 書き込み
 			- 長さカウンタ
 		*/
-		nwc.lengthCounter.load(nwc.register.lengthCounterLoad)
+		if isActive {
+			nwc.lengthCounter.load(nwc.register.lengthCounterLoad)
+		}
 
 		/*
 			副作用
