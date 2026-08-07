@@ -83,6 +83,14 @@ func (c *CPU) Run() {
 	}
 }
 
+// MARK: リセット
+func (c *CPU) Reset() {
+	c.registers.SP -= 3
+	c.registers.P.IrqDisabled = true
+	c.registers.PC = c.bus.ReadWordFrom(0xFFFC)
+	c.bus.Reset()
+}
+
 // MARK: N/Zフラグの更新メソッド
 func (c *CPU) updateNZFlags(result uint8) {
 	// Nフラグの更新

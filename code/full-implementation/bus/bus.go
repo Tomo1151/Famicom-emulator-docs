@@ -44,6 +44,13 @@ func (b *Bus) Tick(cycles uint) {
 	b.ppu.Tick(cycles * 3)
 }
 
+// MARK: リセット
+func (b *Bus) Reset() {
+	// セーブデータの書き出し
+	b.mapper.Save()
+	b.apu.Reset()
+}
+
 // MARK: 各コンポーネントのClose
 func (b *Bus) Shutdown() {
 	b.apu.Close()

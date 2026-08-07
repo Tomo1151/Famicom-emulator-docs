@@ -133,6 +133,19 @@ func main() {
 				b.Shutdown()
 				return
 			case *sdl.KeyboardEvent: // キーボード操作
+				if e.State == sdl.PRESSED {
+					switch e.Keysym.Sym {
+					case sdl.K_ESCAPE:
+						// sdl.QuitEventを生成
+						qe := sdl.QuitEvent{
+							Type:      sdl.QUIT,
+							Timestamp: sdl.GetTicks(),
+						}
+						sdl.PushEvent(&qe)
+					case sdl.K_y:
+						c.Reset()
+					}
+				}
 				handleKeyboardEvent(e, &b)
 			}
 		}
@@ -168,13 +181,7 @@ func handleKeyboardEvent(e *sdl.KeyboardEvent, b *bus.Bus) {
 
 	// 1Pのキー割当て
 	switch e.Keysym.Sym {
-	case sdl.K_ESCAPE:
-		// sdl.QuitEventを生成
-		qe := sdl.QuitEvent{
-			Type:      sdl.QUIT,
-			Timestamp: sdl.GetTicks(),
-		}
-		sdl.PushEvent(&qe)
+
 	case sdl.K_w:
 		b.JoyPad(0).SetButtonState(joypad.JOYPAD_BUTTON_UP_POS, pressed)
 	case sdl.K_a:

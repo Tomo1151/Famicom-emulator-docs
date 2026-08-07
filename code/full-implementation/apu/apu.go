@@ -168,6 +168,13 @@ func (a *APU) Close() {
 	}
 }
 
+// MARK: リセット
+func (a *APU) Reset() {
+	a.status.SetFromByte(0x00)
+	a.status.SetDMCIRQ(false)
+	a.channel5.SetIRQ(false)
+}
+
 // MARK: ステータスレジスタの読み込み (CPU: $4015)
 func (a *APU) ReadStatus() uint8 {
 	var status uint8

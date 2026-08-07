@@ -449,9 +449,11 @@ func (p *PPU) evaluateNextLineSprite() {
 			// ライン上のスプライト数をインクリメント
 			p.spriteCount++
 		} else {
-			// 9個目が存在する場合スプライトオーバーフローフラグをセットし評価を止める
-			p.status.SetSpriteOverflow(true)
-			break
+			// 9個目が存在し，描画が無効でない場合スプライトオーバーフローフラグをセットし評価を止める
+			if p.mask.backgroundEnable || p.mask.spriteEnable {
+				p.status.SetSpriteOverflow(true)
+				break
+			}
 		}
 	}
 }
