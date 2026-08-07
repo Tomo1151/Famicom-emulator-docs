@@ -43,7 +43,7 @@ IRQ, in order to test whether a pair of instructions allows only one
 interrupt or causes continuous interrupts that block the main code from
 continuing.
 
-$03) APU should generate IRQ when $4017 = $00
+$04) Exactly one instruction after CLI should execute before IRQ is taken
 
 #### 2-nmi_and_brk.nes
 
@@ -65,7 +65,7 @@ NMI BRK --
 
 NMI BRK 00
 27 36 00
-27 36 00
+26 36 00
 26 36 00
 26 36 00
 26 36 00
@@ -75,7 +75,7 @@ NMI BRK 00
 26 36 00
 26 36 00
 
-A58D3981
+CB0122C0
 Failed
 
 #### 3-nmi_and_irq.nes
@@ -99,16 +99,16 @@ NMI IRQ
 
 NMI BRK
 23 00
-21 00
-20 00
-20 00
-20 00
-20 00
-00 00
-00 00
-00 00
-00 00
-00 00
+27 23
+27 23
+27 23
+27 23
+27 23
+27 23
+27 23
+27 23
+27 23
+27 23
 
 7A096051
 Failed
@@ -140,38 +140,79 @@ to some arbitrary starting point.
 8 +526
 9 +527
 
-53 +0
-53 +1
-53 +2
-53 +3
-53 +4
-53 +5
-53 +6
-53 +7
-53 +8
-53 +9
-53 +10
-53 +11
-53 +12
-53 +13
+0 +0
+0 +1
+0 +2
+0 +3
+1 +4
+1 +5
+2 +6
+2 +7
+4 +8
+4 +9
+7 +10
+7 +11
+7 +12
+7 +13
 ...
-53 +524
-53 +525
-53 +526
-53 +527
+7 +524
+7 +525
+7 +526
+8 +527
 
-D927EAD0
+4670259C
 Failed
 
 #### 5-branch_delays_irq.nes
 
-stucked
+A taken non-page-crossing branch ignores IRQ during
+its last clock, so that next instruction executes
+before the IRQ. Other instructions would execute the
+NMI before the next instruction.
+
+The same occurs for NMI, though that's not tested here.
+
+test_jmp
+T+ CK PC
+00 02 04 NOP
+01 01 04
+02 03 07 JMP
+03 02 07
+04 01 07
+05 02 08 NOP
+06 01 08
+07 03 08 JMP
+08 02 08
+09 01 08
+
+test_jmp
+T+ CK PC
+00 06 03
+01 05 03
+02 05 03
+03 05 04
+04 05 04
+05 06 07
+06 05 07
+07 05 07
+08 05 08
+09 05 08
+
+AD3C1F08
+
+### cpu_reset
+
+#### ram_after_reset.nes
+
+passed
+
+#### registers.nes
+
+passed
 
 ### cpu_timing_test6/cpu_timing_test.nes
 
-Fail OP : $11 with page cross
-emulator: 5
-correct : 6
+passed
 
 ### nes_instr_test
 
@@ -223,11 +264,81 @@ passed
 
 passed
 
+### instr_misc
+
+#### 01-abs_x_wrap.nes
+
+passed
+
+#### 02-branch_wrap.nes
+
+passed
+
+#### 03-dummy_reads.nes
+
+Tests some instructions that do dummy reads before the real read/write.
+Doesn't test all instructions.
+
+Tests LDA and STA with modes (ZP,X), (ZP),Y and ABS,X
+Dummy reads for the following cases are tested:
+
+LDA ABS,X or (ZP),Y when carry is generated from low byte
+STA ABS,X or (ZP),Y
+ROL ABS,X always
+
+LDA abs,x
+Failed #3
+
+#### 04-dummy_reads_apu.nes
+
+Tests dummy reads for (hopefully) ALL instructions which do them,
+including unofficial ones. Prints opcode(s) of failed instructions.
+Requires that APU implement $4015 IRQ flag reading.
+
+1D 19 11 3D 39 31 5D 59 51 7D
+79 71 9D 99 91 BD B9 B1 DD D9
+D1 FD F9 F1 1E 3E 5E 7E DE FE
+BC BE
+Official opcodes failed
+Failed #2
+
+### instr_timng
+
+#### 1-instr_timing.nes
+
+13 was 9, should be 8 (cross)
+1B was 8, should be 7 (cross)
+1F was 8, should be 7 (cross)
+33 was 9, should be 8 (cross)
+3B was 8, should be 7 (cross)
+3F was 8, should be 7 (cross)
+53 was 9, should be 8 (cross)
+5B was 8, should be 7 (cross)
+5F was 8, should be 7 (cross)
+73 was 9, should be 8 (cross)
+7B was 8, should be 7 (cross)
+7F was 8, should be 7 (cross)
+93 was 0, should be 6
+9F was 0, should be 5
+D3 was 9, should be 8 (cross)
+DB was 8, should be 7 (cross)
+DF was 8, should be 7 (cross)
+F3 was 9, should be 8 (cross)
+FB was 8, should be 7 (cross)
+FF was 8, should be 7 (cross)
+
+Unofficial instruction timing is wrong
+Failed #4
+
+#### 2-branch_timing.nes
+
+passed
+
 ## PPU
 
 ### color_test.nes
 
-実装をしていない色強調以外は問題なし
+passed
 
 ### blargg_ppu_tests_2005.09.15b
 
@@ -252,8 +363,6 @@ $01) passed
 
 #### vram_access.nes
 
-Tests PPU VRAM read/write and internal read buffer operation
-
 $01) passed
 
 ### full_nes_palette.nes
@@ -262,9 +371,9 @@ passed
 
 ### nmi_sync / demo_ntsc.nes
 
-きれいな逆コの字になっている
-\*\*\*\*\*\*\*\*\*
-　　　　　 　 \*\*\*
+きれいな逆コの字になっている  
+\*\*\*\*\*\*\*\*\*  
+　　　　　 　 \*\*\*  
 \*\*\*\*\*\*\*\*\*
 
 ### ntsc_torture.nes
@@ -278,7 +387,7 @@ passed
 ### oam_stress.nes
 
 59916E5B failed
-最初のアスタリスク1つが-になっている，それ以外はきれいに表示
+最初のアスタリスク 1 つが-になっている，それ以外はきれいに表示
 
 ### oam3.nes
 
@@ -355,10 +464,7 @@ passed
 
 #### 1.Basics.nes
 
-Tests basic operation of sprite overflow flag.
-
-Failed #6
-$6) Shouldn't be set when all rendering is off
+passed
 
 #### 2.Details.nes
 
@@ -369,7 +475,7 @@ passed
 Tests timing of sprite overflow flag. The tests fail if timing is off by
 more than a CPU clock or two.
 
-6) Sprite horizontal positions should have no effect on timing
+5. Set too late for first scanline
 
 #### 4.Obscure.nes
 
@@ -394,11 +500,7 @@ $02) Checks that second byte of sprite #10 is treated as its Y
 
 #### 5.Emulator.nes
 
-Tests things that an emulator with predictive overflow flag handling is
-likely to get wrong.
-
-Failed #3
-$03) Disabling rendering didn't recalculate flag time
+passed
 
 ### spritecans-2011/spritecans.nes
 
@@ -419,8 +521,7 @@ passed
 Tests timing of VBL being set, and special case where reading VBL flag
 as it would be set causes it to not be set for that frame.
 
-Failed #8
-$08) Reading 1 PPU clock before VBL should suppress setting
+Failed #4 4) Flag should read as clear 2 PPU clocks before VBL
 
 #### 3.even_odd_frame.nes
 
@@ -429,8 +530,7 @@ enable/disable BG during 5 consecutive frames, then see how many clocks
 were skipped. Patterns are shown as XXXXX, where each X can either be B
 (BG enabled) or - (BG disabled).
 
-Failed #3
-$03) Pattern BB--- should skip 1 clock
+Failed #2 2) Pattern ----- should not skip any clocks
 
 #### 4.vbl_clear_timing.nes
 
@@ -453,3 +553,101 @@ passed
 passed
 
 ## APU
+
+### apu_mixer
+
+#### square.nes
+
+passed
+
+#### triangle.nes
+
+passed
+
+#### noise.nes
+
+failed
+
+#### dmc.nes
+
+failed
+
+### apu_reset
+
+#### 4015_cleared.nes
+
+passed
+
+#### 4017_timing.nes
+
+Delay after effective $4017
+write: 14
+
+Frame IRQ flag should be set later after power/reset
+Failed #2
+
+#### 4017_written.nes
+
+At reset, $4017 should should be rewritten with last value written
+Failed #3
+
+#### irq_flag_cleared.nes
+
+passed
+
+#### len_ctrs_enabled.nes
+
+passed
+
+#### works_immediately.nes
+
+passed
+
+### apu_test
+
+#### 1-len_ctr.nes
+
+passed
+
+#### 2-len_table.nes
+
+passed
+
+#### 3-irq_flag.nes
+
+passed
+
+#### 4-jitter.nes
+
+Tests for APU clock jitter. Also tests basic timing of frame irq flag
+since it's needed to determine jitter.
+
+Frame irq is set too soon
+Faield #2
+
+#### 5-len_timing.nes
+
+Verifies timing of length counter clocks in both modes
+
+Channel: 0
+First length of mode 0 is too soon
+Failed #2
+
+#### 6-irq_flag_timing.nes
+
+Frame interrupt flag is set three times in a row 29831 clocks after
+writing $00 to $4017.
+
+Flag first set too soon
+Failed #2
+
+#### 7-dmc_basics.nes
+
+Verifies basic DMC operation
+
+There should be a one-byte buffer that's filled immediately if empty
+Failed #19
+
+#### 8-dmc_rates.nes
+
+passed
