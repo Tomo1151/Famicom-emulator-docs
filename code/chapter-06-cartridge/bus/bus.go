@@ -4,6 +4,9 @@ import "fc-emu/cartridge"
 
 const (
 	CPU_WRAM_SIZE = 2 * 1024 // 2kB
+
+	CPU_ADDRESS_START uint16 = 0x0000
+	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
 // MARK: Busの定義
@@ -35,11 +38,11 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF:
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF:
 		return b.wram[address&0x07FF] // 2kBでミラーリング
 	case 0x6000 <= address && address <= 0x7FFF:
 		return b.cartridge.Mapper().ReadProgramRAM(address)
-	case 0x8000 <= address && address <= 0xFFFF:
+	case 0x8000 <= address && address <= CPU_ADDRESS_END:
 		return b.cartridge.Mapper().ReadProgramROM(address)
 	default:
 		// TODO: 正しいコンポーネントから値を読み取って返す
@@ -70,11 +73,11 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF:
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF:
 		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	case 0x6000 <= address && address <= 0x7FFF:
 		b.cartridge.Mapper().WriteProgramRAM(address, value)
-	case 0x8000 <= address && address <= 0xFFFF:
+	case 0x8000 <= address && address <= CPU_ADDRESS_END:
 		b.cartridge.Mapper().WriteProgramROM(address, value)
 	default:
 		// TODO: 正しいコンポーネントに値を書き込む

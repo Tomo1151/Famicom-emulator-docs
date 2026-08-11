@@ -65,7 +65,7 @@ func main() {
 	defer texture.Destroy()
 
 	// カートリッジの作成
-	ct := cartridge.NewCartridge("mapperless.nes")
+	ct := cartridge.NewCartridge("nestest.nes")
 
 	// ROMファイルの読み込み
 	err = ct.Load()

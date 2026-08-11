@@ -2,6 +2,9 @@ package bus
 
 const (
 	CPU_WRAM_SIZE = 2 * 1024 // 2kB
+
+	CPU_ADDRESS_START uint16 = 0x0000
+	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
 // MARK: Busの定義
@@ -27,7 +30,7 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF:
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF:
 		return b.wram[address&0x07FF] // 2kBでミラーリング
 	default:
 		// TODO: 正しいコンポーネントから値を読み取って返す
@@ -55,7 +58,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	*/
 
 	switch {
-	case 0x0000 <= address && address <= 0x1FFF:
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF:
 		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	default:
 		// TODO: 正しいコンポーネントに値を書き込む
@@ -63,7 +66,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 }
 
 // MARK: メモリへの書き込み (2バイト)
-func (b *Bus) WriteWordAt(address uint16, value uint8) {
+func (b *Bus) WriteWordAt(address uint16, value uint16) {
 	lower := uint8(value & 0xFF)
 	upper := uint8(value >> 8)
 	b.WriteByteAt(address, lower)

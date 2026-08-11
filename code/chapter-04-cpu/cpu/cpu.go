@@ -9,9 +9,8 @@ import (
 
 // MARK: CPUの定義
 type CPU struct {
-	registers registers
-	bus       bus.Bus
-
+	registers      registers
+	bus            bus.Bus
 	instructionSet instructionSet
 }
 
@@ -51,12 +50,9 @@ func (c *CPU) Step() {
 	instruction.Handler(instruction.AddressingMode)
 
 	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 -1）
-	if instruction.Mnemonic == "JMP" ||
-		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
-		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
-		return
+	if !instruction.Jump {
+		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
-	c.registers.PC += uint16(instruction.Bytes - 1)
 }
 
 // MARK: N/Zフラグの更新メソッド

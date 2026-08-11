@@ -9,9 +9,8 @@ import (
 
 // MARK: CPUの定義
 type CPU struct {
-	registers registers
-	bus       bus.Bus
-
+	registers      registers
+	bus            bus.Bus
 	instructionSet instructionSet
 }
 
@@ -51,12 +50,9 @@ func (c *CPU) Step() {
 	instruction.Handler(instruction.AddressingMode)
 
 	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 -1）
-	if instruction.Mnemonic == "JMP" ||
-		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
-		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK" {
-		return
+	if !instruction.Jump {
+		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
-	c.registers.PC += uint16(instruction.Bytes - 1)
 }
 
 // MARK: N/Zフラグの更新メソッド
@@ -127,6 +123,14 @@ func (c *CPU) calcOperandAddress(mode AddressingMode) uint16 {
 		fallthrough
 	default:
 		return 0x0000
+	}
+}
+
+// 共通の分岐処理メソッド
+func (c *CPU) branchIf(condition bool, mode AddressingMode) {
+	if condition {
+		address := c.calcOperandAddress(mode)
+		c.registers.PC = address
 	}
 }
 
@@ -367,66 +371,42 @@ func (c *CPU) ror(mode AddressingMode) {
 // MARK: 条件分岐系 公式命令
 // BCC命令の実装
 func (c *CPU) bcc(mode AddressingMode) {
-	if !c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Carry, mode)
 }
 
-// BCC命令の実装
+// BCS命令の実装
 func (c *CPU) bcs(mode AddressingMode) {
-	if c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Carry, mode)
 }
 
 // BEQ命令の実装
 func (c *CPU) beq(mode AddressingMode) {
-	if c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Zero, mode)
 }
 
 // BMI命令の実装
 func (c *CPU) bmi(mode AddressingMode) {
-	if c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Negative, mode)
 }
 
 // BNE命令の実装
 func (c *CPU) bne(mode AddressingMode) {
-	if !c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Zero, mode)
 }
 
 // BPL命令の実装
 func (c *CPU) bpl(mode AddressingMode) {
-	if !c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Negative, mode)
 }
 
 // BVC命令の実装
 func (c *CPU) bvc(mode AddressingMode) {
-	if !c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Overflow, mode)
 }
 
 // BVS命令の実装
 func (c *CPU) bvs(mode AddressingMode) {
-	if c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Overflow, mode)
 }
 
 // MARK: ジャンプ系 公式命令
@@ -784,7 +764,9 @@ func (c *CPU) dop(_ AddressingMode) {
 }
 
 // TOP命令の実装 (NOP / IGN)
-func (c *CPU) top(_ AddressingMode) {
+func (c *CPU) top(mode AddressingMode) {
+	address := c.calcOperandAddress(mode)
+	c.bus.ReadByteFrom(address)
 }
 
 // XAA命令の実装 (ANE)
@@ -958,7 +940,7 @@ func (c *CPU) Trace() string {
 
 	// 行全体の組み立て
 	return fmt.Sprintf(
-		"%04X  %s %4s %-28s %s",
+		"%04X  %s %4s %-27s %s",
 		base,
 		hexDump,
 		instruction.Mnemonic,

@@ -26,6 +26,7 @@ type instruction struct {
 	AddressingMode AddressingMode
 	Bytes          uint8
 	Cycles         uint8
+	Jump           bool
 	Handler        func(mode AddressingMode)
 }
 
@@ -811,6 +812,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         7,
+		Jump:           true,
 		Handler:        c.brk,
 	}
 
@@ -821,6 +823,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Absolute,
 		Bytes:          3,
 		Cycles:         3,
+		Jump:           true,
 		Handler:        c.jmp,
 	}
 
@@ -830,6 +833,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Indirect,
 		Bytes:          3,
 		Cycles:         5,
+		Jump:           true,
 		Handler:        c.jmp,
 	}
 
@@ -840,6 +844,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Absolute,
 		Bytes:          3,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.jsr,
 	}
 
@@ -850,6 +855,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.rti,
 	}
 
@@ -860,6 +866,7 @@ func generateInstructionSet(c *CPU) instructionSet {
 		AddressingMode: Implied,
 		Bytes:          1,
 		Cycles:         6,
+		Jump:           true,
 		Handler:        c.rts,
 	}
 
@@ -1560,18 +1567,18 @@ func generateInstructionSet(c *CPU) instructionSet {
 	}
 
 	// AHX命令 (AXA / SHA)
-	instructionSet[0x9F] = instruction{
+	instructionSet[0x93] = instruction{
 		Mnemonic:       "AHX",
-		Opcode:         0x9F,
+		Opcode:         0x93,
 		AddressingMode: IndirectIndexed,
 		Bytes:          2,
 		Cycles:         6,
 		Handler:        c.ahx,
 	}
 
-	instructionSet[0x93] = instruction{
+	instructionSet[0x9F] = instruction{
 		Mnemonic:       "AHX",
-		Opcode:         0x93,
+		Opcode:         0x9F,
 		AddressingMode: AbsoluteYIndexed,
 		Bytes:          3,
 		Cycles:         5,

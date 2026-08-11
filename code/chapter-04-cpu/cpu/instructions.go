@@ -26,6 +26,7 @@ type instruction struct {
 	AddressingMode AddressingMode
 	Bytes          uint8
 	Cycles         uint8
+	Jump           bool
 	Handler        func(mode AddressingMode)
 }
 

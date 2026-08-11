@@ -28,8 +28,6 @@ func NewCPU(bus bus.Bus) *CPU {
 		P:  NewStatusRegister(),
 	}
 
-	// FIXME: nestest用のエントリポイント
-	// cpu.registers.PC = 0xC000
 	return cpu
 }
 
@@ -42,21 +40,18 @@ func (c *CPU) Step() {
 	// 命令のデコード
 	instruction := c.instructionSet[opcode]
 
+	// 各コンポーネントのクロック
+	c.bus.Tick(uint(instruction.Cycles))
+
 	// 命令の実行
 	instruction.Handler(instruction.AddressingMode)
 
 	// PCを書き換えない命令のみ，命令長の分プログラムカウンタを進める（オペコード分 - 1）
-	isJump := instruction.Mnemonic == "JMP" ||
-		instruction.Mnemonic == "JSR" || instruction.Mnemonic == "RTI" ||
-		instruction.Mnemonic == "RTS" || instruction.Mnemonic == "BRK"
-
-	if !isJump {
+	if !instruction.Jump {
 		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
 
-	// 各コンポーネントのクロック
-	c.bus.Tick(uint(instruction.Cycles))
-
+	// 割り込みの制御
 	if c.bus.NMI() {
 		c.interrupt(NMI)
 	}
@@ -74,7 +69,7 @@ func (c *CPU) interrupt(interrupt Interrupt) {
 	c.pushByte(status.ToByte())
 	c.registers.P.IrqDisabled = true
 
-	c.bus.Tick(uint(interrupt.CPUCycles))
+	c.bus.Tick(uint(interrupt.Cycles))
 	c.registers.PC = c.bus.ReadWordFrom(interrupt.VectorAddress)
 }
 
@@ -84,6 +79,13 @@ func (c *CPU) Run() {
 		fmt.Println(c.Trace())
 		c.Step()
 	}
+}
+
+// MARK: リセット
+func (c *CPU) Reset() {
+	c.registers.SP -= 3
+	c.registers.P.IrqDisabled = true
+	c.registers.PC = c.bus.ReadWordFrom(0xFFFC)
 }
 
 // MARK: N/Zフラグの更新メソッド
@@ -100,6 +102,36 @@ func (c *CPU) updateNZFlags(result uint8) {
 		c.registers.P.Zero = true
 	} else {
 		c.registers.P.Zero = false
+	}
+}
+
+// MARK: ページ跨ぎの判定メソッド
+func (c *CPU) isPageCrossed(address1, address2 uint16) bool {
+	return (address1 & 0xFF00) != (address2 & 0xFF00)
+}
+
+// ページ境界を跨いだ際に追加のクロック（+1）を発生させるメソッド
+func (c *CPU) checkPageCross(mode AddressingMode) {
+	switch mode {
+	case AbsoluteXIndexed:
+		base := c.bus.ReadWordFrom(c.registers.PC)
+		if c.isPageCrossed(base, base+uint16(c.registers.X)) {
+			c.bus.Tick(1)
+		}
+	case AbsoluteYIndexed:
+		base := c.bus.ReadWordFrom(c.registers.PC)
+		if c.isPageCrossed(base, base+uint16(c.registers.Y)) {
+			c.bus.Tick(1)
+		}
+	case IndirectIndexed:
+		ptrBase := c.bus.ReadByteFrom(c.registers.PC)
+		ptr := uint8(ptrBase)
+		lower := c.bus.ReadByteFrom(uint16(ptr))
+		upper := c.bus.ReadByteFrom(uint16(ptr+1) & 0xFF)
+		base := uint16(upper)<<8 | uint16(lower)
+		if c.isPageCrossed(base, base+uint16(c.registers.Y)) {
+			c.bus.Tick(1)
+		}
 	}
 }
 
@@ -157,6 +189,27 @@ func (c *CPU) calcOperandAddress(mode AddressingMode) uint16 {
 	}
 }
 
+// 共通の分岐処理メソッド
+func (c *CPU) branchIf(condition bool, mode AddressingMode) {
+	if condition {
+		address := c.calcOperandAddress(mode)
+
+		// 分岐成功で +1 サイクル
+		c.bus.Tick(1)
+
+		/*
+			ページ境界を跨いだ場合はさらに +1 サイクル
+			分岐元の次の命令のPCは (c.registers.PC + 1)
+			分岐先のPCは (address + 1) になるため、その2つでページ判定を行う
+		*/
+		if c.isPageCrossed(c.registers.PC+1, address+1) {
+			c.bus.Tick(1)
+		}
+
+		c.registers.PC = address
+	}
+}
+
 // MARK: スタック操作
 // スタック領域へのプッシュ (1バイト)
 func (c *CPU) pushByte(value uint8) {
@@ -199,6 +252,7 @@ func (c *CPU) pullWord() uint16 {
 // MARK: 算術演算系 公式命令
 // ADC命令の実装
 func (c *CPU) adc(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	var carry uint16 = 0
@@ -256,6 +310,7 @@ func (c *CPU) iny(_ AddressingMode) {
 
 // SBC命令の実装
 func (c *CPU) sbc(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	inverted := ^value
@@ -277,6 +332,7 @@ func (c *CPU) sbc(mode AddressingMode) {
 // MARK: ビット演算系 公式命令
 // AND命令の実装
 func (c *CPU) and(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.A &= value
@@ -295,6 +351,7 @@ func (c *CPU) bit(mode AddressingMode) {
 
 // EOR命令の実装
 func (c *CPU) eor(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.A ^= value
@@ -303,6 +360,7 @@ func (c *CPU) eor(mode AddressingMode) {
 
 // ORA命令の実装
 func (c *CPU) ora(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.A |= value
@@ -394,66 +452,42 @@ func (c *CPU) ror(mode AddressingMode) {
 // MARK: 条件分岐系 公式命令
 // BCC命令の実装
 func (c *CPU) bcc(mode AddressingMode) {
-	if !c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Carry, mode)
 }
 
-// BCC命令の実装
+// BCS命令の実装
 func (c *CPU) bcs(mode AddressingMode) {
-	if c.registers.P.Carry {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Carry, mode)
 }
 
 // BEQ命令の実装
 func (c *CPU) beq(mode AddressingMode) {
-	if c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Zero, mode)
 }
 
 // BMI命令の実装
 func (c *CPU) bmi(mode AddressingMode) {
-	if c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Negative, mode)
 }
 
 // BNE命令の実装
 func (c *CPU) bne(mode AddressingMode) {
-	if !c.registers.P.Zero {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Zero, mode)
 }
 
 // BPL命令の実装
 func (c *CPU) bpl(mode AddressingMode) {
-	if !c.registers.P.Negative {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Negative, mode)
 }
 
 // BVC命令の実装
 func (c *CPU) bvc(mode AddressingMode) {
-	if !c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(!c.registers.P.Overflow, mode)
 }
 
 // BVS命令の実装
 func (c *CPU) bvs(mode AddressingMode) {
-	if c.registers.P.Overflow {
-		address := c.calcOperandAddress(mode)
-		c.registers.PC = address
-	}
+	c.branchIf(c.registers.P.Overflow, mode)
 }
 
 // MARK: ジャンプ系 公式命令
@@ -532,6 +566,7 @@ func (c *CPU) sei(_ AddressingMode) {
 // MARK: 比較系 公式命令
 // CMP命令の実装
 func (c *CPU) cmp(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.P.Carry = c.registers.A >= value
@@ -557,6 +592,7 @@ func (c *CPU) cpy(mode AddressingMode) {
 // MARK: データアクセス系 公式命令
 // LDA命令の実装
 func (c *CPU) lda(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.A = value
@@ -565,6 +601,7 @@ func (c *CPU) lda(mode AddressingMode) {
 
 // LDX命令の実装
 func (c *CPU) ldx(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.X = value
@@ -573,6 +610,7 @@ func (c *CPU) ldx(mode AddressingMode) {
 
 // LDY命令の実装
 func (c *CPU) ldy(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	c.registers.Y = value
@@ -740,6 +778,7 @@ func (c *CPU) isc(mode AddressingMode) {
 
 // LAS命令の実装 (LAR / LAE)
 func (c *CPU) las(mode AddressingMode) {
+	c.checkPageCross(mode)
 	address := c.calcOperandAddress(mode)
 	value := c.bus.ReadByteFrom(address)
 	result := c.registers.SP & value
@@ -811,7 +850,10 @@ func (c *CPU) dop(_ AddressingMode) {
 }
 
 // TOP命令の実装 (NOP / IGN)
-func (c *CPU) top(_ AddressingMode) {
+func (c *CPU) top(mode AddressingMode) {
+	c.checkPageCross(mode)
+	address := c.calcOperandAddress(mode)
+	c.bus.ReadByteFrom(address)
 }
 
 // XAA命令の実装 (ANE)
