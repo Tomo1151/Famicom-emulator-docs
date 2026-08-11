@@ -2,7 +2,7 @@ package bus
 
 import (
 	"fc-emu/apu"
-	"fc-emu/cartridge"
+	"fc-emu/cartridge/mappers"
 	"fc-emu/joypad"
 	"fc-emu/ppu"
 )
@@ -10,33 +10,36 @@ import (
 const (
 	CPU_WRAM_SIZE = 2 * 1024 // 2kB
 
-	CPU_WRAM_START uint16 = 0x0000
-	CPU_WRAM_END   uint16 = 0xFFFF
+	CPU_ADDRESS_START uint16 = 0x0000
+	CPU_ADDRESS_END   uint16 = 0xFFFF
 )
 
 // MARK: Busの定義
 type Bus struct {
-	wram      [CPU_WRAM_SIZE]uint8 // CPUのWRAM
-	cartridge *cartridge.Cartridge // カートリッジ
-	apu       *apu.APU             // APU
-	ppu       *ppu.PPU             // PPU
-	joypad1   *joypad.JoyPad       // コントローラ (1P)
-	joypad2   *joypad.JoyPad       // コントローラ (2P)
+	wram    [CPU_WRAM_SIZE]uint8 // CPUのWRAM
+	mapper  mappers.Mapper       // カートリッジの参照
+	apu     *apu.APU             // APU
+	ppu     *ppu.PPU             // PPU
+	joypad1 *joypad.JoyPad       // コントローラ (1P)
+	joypad2 *joypad.JoyPad       // コントローラ (2P)
+
+	cycles uint // CPUサイクル
 }
 
 // MARK: Busのコンストラクタ
-func NewBus(cartridge *cartridge.Cartridge, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
+func NewBus(mapper mappers.Mapper, apu *apu.APU, ppu *ppu.PPU, joypad1 *joypad.JoyPad, joypad2 *joypad.JoyPad) Bus {
 	return Bus{
-		cartridge: cartridge,
-		apu:       apu,
-		ppu:       ppu,
-		joypad1:   joypad1,
-		joypad2:   joypad2,
+		mapper:  mapper,
+		apu:     apu,
+		ppu:     ppu,
+		joypad1: joypad1,
+		joypad2: joypad2,
 	}
 }
 
 // MARK: 各コンポーネントのクロックの更新
 func (b *Bus) Tick(cycles uint) {
+	b.cycles += cycles
 	b.apu.Tick(cycles)
 	b.ppu.Tick(cycles * 3)
 }
@@ -44,7 +47,7 @@ func (b *Bus) Tick(cycles uint) {
 // MARK: 各コンポーネントのClose
 func (b *Bus) Shutdown() {
 	b.apu.Close()
-	b.cartridge.Mapper().Save()
+	b.mapper.Save()
 }
 
 // MARK: メモリの読み取り (1バイト)
@@ -58,8 +61,6 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 		$1000-$17FF 0x0800
 		$1800-$1FFF 0x0800
 
-		$2000              PPU コントロールレジスタ
-		$2001              PPU マスクレジスタ
 		$2002              PPU ステータスレジスタ
 		$2004              OAM データ
 		$2007              PPU データ
@@ -72,12 +73,8 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	*/
 
 	switch {
-	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF: // CPU WRAM
 		return b.wram[address&0x07FF] // 2kBでミラーリング
-	case address == 0x2000: // PPU CTRL
-		return b.ppu.ReadPPUControl()
-	case address == 0x2001: // PPU MASK
-		return b.ppu.ReadPPUMask()
 	case address == 0x2002: // PPU STATUS
 		return b.ppu.ReadPPUStatus()
 	case address == 0x2004: // OAM DATA
@@ -94,11 +91,10 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	case address == 0x4017: // コントローラ (2P)
 		return b.joypad2.ReadJoyPad()
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
-		return b.cartridge.Mapper().ReadProgramRAM(address)
-	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
-		return b.cartridge.Mapper().ReadProgramROM(address)
+		return b.mapper.ReadProgramRAM(address)
+	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
+		return b.mapper.ReadProgramROM(address)
 	default:
-		// TODO: 正しいコンポーネントから値を読み取って返す
 		return 0x00
 	}
 }
@@ -136,7 +132,7 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	*/
 
 	switch {
-	case CPU_WRAM_START <= address && address <= 0x1FFF: // CPU WRAM
+	case CPU_ADDRESS_START <= address && address <= 0x1FFF: // CPU WRAM
 		b.wram[address&0x07FF] = value // 2kBでミラーリング
 	case address == 0x2000: // PPU CTRL
 		b.ppu.WritePPUControl(value)
@@ -162,6 +158,13 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 			buffer[i] = b.ReadByteFrom(upper | uint16(i))
 		}
 		b.ppu.DMATransfer(&buffer)
+
+		// DMA転送は513/514サイクルを消費する
+		dmaCycles := uint(513)
+		if b.cycles%2 != 0 {
+			dmaCycles = 514
+		}
+		b.Tick(dmaCycles)
 	case address == 0x4016: // コントローラ (1P/2P)
 		b.joypad1.WriteJoyPad(value)
 		b.joypad2.WriteJoyPad(value)
@@ -180,11 +183,10 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	case address == 0x4017: // APU フレームカウンタ
 		b.apu.WriteFrameCounter(value)
 	case 0x6000 <= address && address <= 0x7FFF: // PRG RAM
-		b.cartridge.Mapper().WriteProgramRAM(address, value)
-	case 0x8000 <= address && address <= CPU_WRAM_END: // PRG ROM
-		b.cartridge.Mapper().WriteProgramROM(address, value)
+		b.mapper.WriteProgramRAM(address, value)
+	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
+		b.mapper.WriteProgramROM(address, value)
 	default:
-		// TODO: 正しいコンポーネントに値を書き込む
 	}
 }
 
@@ -203,5 +205,15 @@ func (b *Bus) NMI() bool {
 
 // MARK: マッパー割込みの取得
 func (b *Bus) MapperIRQ() bool {
-	return b.cartridge.Mapper().IRQ()
+	return b.mapper.IRQ()
+}
+
+// MARK: APU割り込みの取得
+func (b *Bus) APUIRQ() bool {
+	return b.apu.IRQ()
+}
+
+// MARK: DMC用CPUバス読み取り
+func (b *Bus) DMCRead(address uint16) uint8 {
+	return b.ReadByteFrom(address)
 }
