@@ -67,12 +67,16 @@ func main() {
 
 	// キャンバスの作成
 	cv := ppu.NewCanvas()
+	buf := unsafe.Pointer(&(cv.Buffer())[0])
 
 	// PPUの作成
 	p := ppu.NewPPU(ct.Mapper(), &cv)
 
+	// Busの作成
+	b := bus.NewBus(ct.Mapper(), &p)
+
 	// CPUの作成
-	c := cpu.NewCPU(bus.NewBus(ct, &p))
+	c := cpu.NewCPU(b)
 
 	// 初期フレーム時間の定義
 	ticksPerFrame := GetTicksPerFrame()
@@ -113,7 +117,7 @@ func main() {
 		}
 
 		// テクスチャの更新
-		texture.Update(nil, unsafe.Pointer(&(cv.Buffer())[0]), int(ppu.SCREEN_WIDTH*3))
+		texture.Update(nil, buf, int(ppu.SCREEN_WIDTH*3))
 
 		// テクスチャの描画
 		renderer.Clear()

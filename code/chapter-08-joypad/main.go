@@ -68,6 +68,7 @@ func main() {
 
 	// キャンバスの作成
 	cv := ppu.NewCanvas()
+	buf := unsafe.Pointer(&(cv.Buffer())[0])
 
 	// コントローラの作成
 	j1 := joypad.NewJoypad()
@@ -77,7 +78,7 @@ func main() {
 	p := ppu.NewPPU(ct.Mapper(), &cv)
 
 	// Busの作成
-	b := bus.NewBus(ct, &p, &j1, &j2)
+	b := bus.NewBus(ct.Mapper(), &p, &j1, &j2)
 
 	// CPUの作成
 	c := cpu.NewCPU(b)
@@ -139,7 +140,7 @@ func main() {
 		}
 
 		// テクスチャの更新
-		texture.Update(nil, unsafe.Pointer(&(cv.Buffer())[0]), int(ppu.SCREEN_WIDTH*3))
+		texture.Update(nil, buf, int(ppu.SCREEN_WIDTH*3))
 
 		// テクスチャの描画
 		renderer.Clear()

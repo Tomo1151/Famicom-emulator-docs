@@ -8,10 +8,10 @@ import (
 
 // MARK: 定数定義
 const (
-	PPU_VRAM_SIZE          = 2 * 1024             // 1024kB
-	PPU_PALETTE_TABLE_SIZE = 32                   // 32色 (背景/スプライト各16色ずつ)
-	PPU_PRIMARY_OAM_SIZE   = 64 * OAM_SPRITE_SIZE // 64スプライト
-	PPU_SECONDARY_OAM_SIZE = 8 * OAM_SPRITE_SIZE  // 8スプライト
+	PPU_VRAM_SIZE          = 2 * 1024             // 2048 kB: 2画面
+	PPU_PALETTE_TABLE_SIZE = 32                   // 32 B: 32色 (背景/スプライト各16色ずつ)
+	PPU_PRIMARY_OAM_SIZE   = 64 * OAM_SPRITE_SIZE // 256 B: 64スプライト
+	PPU_SECONDARY_OAM_SIZE = 8 * OAM_SPRITE_SIZE  // 32 B:8スプライト
 
 	PPU_ADDRESS_START      = 0x0000
 	PPU_ADDRESS_END        = 0xFFFF
@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	SPRITE_ZERO_NOT_FOUND = 0xFF
+	COLOR_EMPHASIZE_FACTOR = 0.75 // 色強調係数
 )
 
 // MARK: PPUの定義
@@ -63,7 +63,7 @@ type PPU struct {
 	x XRegister
 	w WRegister
 
-	// 描画用シフトレジスタ
+	// 描画用シフトレジスタ・ラッチ
 	backgroundLatch BackgroundLatch
 	backgroundShift BackgroundShiftRegister
 	spriteLatch     SpriteLatch
@@ -72,13 +72,13 @@ type PPU struct {
 	mapper mappers.Mapper // カートリッジ (CHR ROM) への参照
 	canvas *Canvas        // 描画キャンバスの参照
 
-	dot             uint
-	scanline        uint
-	oamAddress      uint8
-	dataBuffer      uint8
-	spriteCount     uint
-	spriteZeroIndex uint
-	nmi             bool
+	dot                uint
+	scanline           uint
+	oamAddress         uint8
+	dataBuffer         uint8
+	spriteCount        uint
+	isSpriteZeroOnLine bool
+	nmi                bool
 
 	frame uint64
 }
@@ -86,23 +86,23 @@ type PPU struct {
 // MARK: PPUのコンストラクタ
 func NewPPU(mapper mappers.Mapper, canvas *Canvas) PPU {
 	return PPU{
-		control:         NewControlRegister(),
-		mask:            NewMaskRegister(),
-		status:          NewStatusRegister(),
-		t:               NewAddressRegister(),
-		v:               NewAddressRegister(),
-		x:               NewXRegister(),
-		w:               NewWRegister(),
-		mapper:          mapper,
-		canvas:          canvas,
-		dot:             0,
-		scanline:        0,
-		oamAddress:      0x00,
-		dataBuffer:      0x00,
-		spriteCount:     0,
-		spriteZeroIndex: SPRITE_ZERO_NOT_FOUND,
-		nmi:             false,
-		frame:           0,
+		control:            NewControlRegister(),
+		mask:               NewMaskRegister(),
+		status:             NewStatusRegister(),
+		t:                  NewAddressRegister(),
+		v:                  NewAddressRegister(),
+		x:                  NewXRegister(),
+		w:                  NewWRegister(),
+		mapper:             mapper,
+		canvas:             canvas,
+		dot:                0,
+		scanline:           0,
+		oamAddress:         0x00,
+		dataBuffer:         0x00,
+		spriteCount:        0,
+		isSpriteZeroOnLine: false,
+		nmi:                false,
+		frame:              0,
 	}
 }
 
@@ -152,23 +152,28 @@ func (p *PPU) ReadOAMData() uint8 {
 
 // MARK: PPUデータの読み取り (CPU: $2007)
 func (p *PPU) ReadPPUData() uint8 {
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+
+	// PPU DATA レジスタの読み出しによってVRAMアドレスは自動的にインクリメントされる
 	p.incrementVRAMAddress()
 
 	// CPUからの読み取りは内部バッファにより一回分遅延する
 	value := p.dataBuffer
-	p.dataBuffer = p.ReadPPUVRAM(address)
+	p.dataBuffer = p.ReadPPUMemory(address)
 
 	// パレットテーブルのみ遅延無しで読み取り
 	if 0x3F00 <= address && address <= 0x3FFF {
-		value = p.ReadPPUVRAM(address)
+		value = p.ReadPPUMemory(address)
+
+		// パレットテーブルの読み出し時はネームテーブルのミラーリング領域のデータが内部バッファにセットされる
+		p.dataBuffer = p.ReadPPUMemory(address & PPU_NAMETABLE_ADDRESS_MASK)
 	}
 
 	return value
 }
 
 // MARK: PPUメモリマップの読み取り
-func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
+func (p *PPU) ReadPPUMemory(address uint16) uint8 {
 	/*
 		PPU メモリマップ
 		(範囲 / サイズ / 対象)
@@ -189,8 +194,10 @@ func (p *PPU) ReadPPUVRAM(address uint16) uint8 {
 		return p.vram[vramAddress]
 	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
 		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+
+		// スプライトパレットNの0番目の色は背景パレットNの0番目がミラーリングされる
 		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
+			paletteTableIndex -= 0x10
 		}
 		return p.paletteTable[paletteTableIndex]
 	default:
@@ -205,9 +212,13 @@ func (p *PPU) WritePPUControl(value uint8) {
 	p.control.SetFromByte(value)
 	p.t.updateNameTable(value)
 
-	// VBlank中にGenerateNMIがセットされたタイミングでNMIが発生
+	// VBlank中のNMIフラグ操作
 	if !prev && p.control.GenerateNMI() && p.status.VBlank() {
+		// GenerateNMIがセットされたタイミングでNMIフラグは即時セットされる
 		p.nmi = true
+	} else if prev && !p.control.GenerateNMI() {
+		// GenerateNMIがクリアされたタイミングでNMIフラグは即時クリアされる
+		p.nmi = false
 	}
 }
 
@@ -229,8 +240,9 @@ func (p *PPU) WriteOAMData(value uint8) {
 
 // MARK: PPUスクロールの書き込み (CPU: $2005)
 func (p *PPU) WritePPUScroll(value uint8) {
+	// 1回目はXレジスタも更新 (fineX)
 	if !p.w.latch {
-		p.x.update(value) // 1回目はXレジスタも更新 (fineX)
+		p.x.update(value)
 	}
 
 	p.t.updateScroll(value, p.w.latch) // Tレジスタは毎回更新 (fineY / coarseX / coarseY)
@@ -241,8 +253,8 @@ func (p *PPU) WritePPUScroll(value uint8) {
 func (p *PPU) WritePPUAddress(value uint8) {
 	p.t.updateAddress(value, p.w.latch)
 
+	// 2回目の書き込み時はTレジスタをVレジスタにコピー
 	if p.w.latch {
-		// 2回目の書き込み時はTレジスタをVレジスタにコピー
 		p.t.copyAllBitsTo(&p.v)
 	}
 
@@ -251,6 +263,13 @@ func (p *PPU) WritePPUAddress(value uint8) {
 
 // MARK: PPUデータの書き込み (CPU: $2007)
 func (p *PPU) WritePPUData(value uint8) {
+	address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
+	p.incrementVRAMAddress()
+	p.WritePPUMemory(address, value)
+}
+
+// MARK: PPUデータの書き込み (CPU: $2007)
+func (p *PPU) WritePPUMemory(address uint16, value uint8) {
 	/*
 		PPU メモリマップ
 		(範囲 / サイズ / 対象)
@@ -263,9 +282,6 @@ func (p *PPU) WritePPUData(value uint8) {
 		$4000-$FFFF 0x4000 $0000-$3FFF のミラーリング
 	*/
 
-	address := p.v.ToByte() & PPU_MEMORY_ADDRESS_MASK // $4000-$FFFF のミラーリング
-	p.incrementVRAMAddress()
-
 	switch {
 	case PPU_ADDRESS_START <= address && address <= 0x1FFF: // パターンテーブル (CHR RAM)
 		if p.mapper.IsCharacterRAM() {
@@ -276,8 +292,10 @@ func (p *PPU) WritePPUData(value uint8) {
 		p.vram[vramAddress] = value
 	case 0x3F00 <= address && address <= 0x3FFF: // パレットテーブル
 		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+
+		// スプライトパレットNの0番目の色は背景パレットNの0番目がミラーリングされる
 		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
+			paletteTableIndex -= 0x10
 		}
 		p.paletteTable[paletteTableIndex] = value
 	default:
@@ -294,10 +312,12 @@ func (p *PPU) DMATransfer(bytes *[256]uint8) {
 
 // MARK: 可視スキャンラインの処理
 func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
+	// ラインの先頭でセカンダリOAMを初期化
 	if p.dot == 1 {
-		// ラインの先頭でセカンダリOAMを初期化
 		p.clearSecondaryOAM()
 	}
+
+	// スプライトの評価
 	if 65 <= p.dot && p.dot <= 256 {
 		p.evaluateNextLineSprite()
 	}
@@ -343,12 +363,15 @@ func (p *PPU) tickVBlankScanline() {
 
 // MARK: プリレンダーラインの処理
 func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
+	// ラインの先頭各種フラグのクリアとセカンダリOAMの初期化
 	if p.dot == 1 {
 		p.status.SetVBlank(false)
 		p.status.SetSpriteZeroHit(false)
 		p.status.SetSpriteOverflow(false)
 		p.clearSecondaryOAM()
 	}
+
+	// スプライト評価
 	if 65 <= p.dot && p.dot <= 256 {
 		p.evaluateNextLineSprite()
 	}
@@ -357,8 +380,10 @@ func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
 		return
 	}
 
+	// 背景フェッチ
 	p.fetchBackgroundPipeline()
 
+	// スクロール更新
 	if p.dot == 256 {
 		p.v.incrementVertical()
 	}
@@ -375,7 +400,7 @@ func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
 
 // MARK: 次のスキャンラインで描画するスプライトの評価
 func (p *PPU) evaluateNextLineSprite() {
-	p.spriteCount = 0
+	p.spriteCount = 0 // 評価中のライン上のスプライトの出現数
 	spriteHeight := p.control.SpriteSize()
 
 	// 次のスキャンラインを計算，プリレンダーライン以降は次フレームの0ライン目になる
@@ -398,7 +423,7 @@ func (p *PPU) evaluateNextLineSprite() {
 		if p.spriteCount < MAX_SPRITE_COUNT {
 			// プライマリOAMの先頭であればスプライト0として位置を記憶
 			if i == 0 {
-				p.spriteZeroIndex = p.spriteCount
+				p.isSpriteZeroOnLine = true
 			}
 
 			// セカンダリOAMにプライマリOAMの中身をコピー
@@ -411,9 +436,11 @@ func (p *PPU) evaluateNextLineSprite() {
 			// ライン上のスプライト数をインクリメント
 			p.spriteCount++
 		} else {
-			// 9個目が存在する場合スプライトオーバーフローフラグをセットし評価を止める
-			p.status.SetSpriteOverflow(true)
-			break
+			// 9個目が存在し，描画が無効でない場合スプライトオーバーフローフラグをセットし評価を止める
+			if p.mask.backgroundEnable || p.mask.spriteEnable {
+				p.status.SetSpriteOverflow(true)
+				break
+			}
 		}
 	}
 }
@@ -421,21 +448,16 @@ func (p *PPU) evaluateNextLineSprite() {
 // MARK: 背景フェッチパイプライン
 func (p *PPU) fetchBackgroundPipeline() {
 	if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
-		// 背景パターンのフェッチ
+		// 次ラインの背景パターンをフェッチ
 		p.backgroundShift.shift()
 		p.fetchBackground()
-
-		// 8ドット毎にVレジスタの水平アドレスをインクリメント
-		if p.dot%TILE_SIZE == 0 {
-			p.v.incrementHorizontal()
-		}
 	}
 }
 
 // MARK: スプライトフェッチパイプライン
 func (p *PPU) fetchSpritePipeline() {
 	if 257 <= p.dot && p.dot <= 320 {
-		// 次のライン用にタイルをフェッチ
+		// 次ラインのスプライトパターンをフェッチ
 		spriteIndex := (p.dot - 257) / TILE_SIZE
 		p.fetchSprite(spriteIndex)
 	}
@@ -456,24 +478,25 @@ func (p *PPU) fetchBackground() {
 	switch p.dot % TILE_SIZE {
 	case 1: // ネームテーブルのフェッチ
 		nameTableAddress := p.getNameTableAddress()
-		tile := p.ReadPPUVRAM(nameTableAddress)
+		tile := p.ReadPPUMemory(nameTableAddress)
 		p.backgroundLatch.nameTable = tile
 	case 3: // 属性テーブルのフェッチ
 		attributeTableAddress := p.getAttributeTableAddress()
-		attribute := p.ReadPPUVRAM(attributeTableAddress)
+		attribute := p.ReadPPUMemory(attributeTableAddress)
 		// Vレジスタの位置に応じて該当する2ビットを抽出する
 		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
 		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
 	case 5: // パターンテーブル(下位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(false)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
+		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternLower = pattern
 	case 7: // パターンテーブル(上位)のフェッチ
 		patternTableAddress := p.getBackgroundPatternAddress(true)
-		pattern := p.ReadPPUVRAM(patternTableAddress)
+		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
 		p.backgroundShift.load(&p.backgroundLatch)
+		p.v.incrementHorizontal() // VRAMアドレスの水平インクリメント
 	}
 }
 
@@ -496,10 +519,10 @@ func (p *PPU) fetchSprite(index uint) {
 	switch p.dot % TILE_SIZE {
 	case 5: // パターンテーブル(下位)のフェッチ
 		address := p.getSpritePatternAddress(index, false)
-		p.spriteLatch.patternLower = p.ReadPPUVRAM(address)
+		p.spriteLatch.patternLower = p.ReadPPUMemory(address)
 	case 7: // パターンテーブル(上位)のフェッチ
 		address := p.getSpritePatternAddress(index, true)
-		p.spriteLatch.patternUpper = p.ReadPPUVRAM(address)
+		p.spriteLatch.patternUpper = p.ReadPPUMemory(address)
 	case 0: // ラッチ・セカンダリOAMからシフトレジスタへロード
 		basePtr := index * OAM_SPRITE_SIZE
 
@@ -510,7 +533,7 @@ func (p *PPU) fetchSprite(index uint) {
 		p.spriteShifts[index].load(&p.spriteLatch, flipH)
 		p.spriteShifts[index].attributes = attributes
 		p.spriteShifts[index].xDistance = spriteX
-		p.spriteShifts[index].isSpriteZero = (index == p.spriteZeroIndex)
+		p.spriteShifts[index].isSpriteZero = (index == 0 && p.isSpriteZeroOnLine)
 	}
 }
 
@@ -552,22 +575,37 @@ func (p *PPU) renderPixel() {
 	var color sdl.Color
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
-		color = PALETTE[p.paletteTable[0x00]]
+		address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK
+
+		if !p.mask.backgroundEnable && !p.mask.spriteEnable && 0x3F00 <= address && address <= 0x3FFF {
+			// 描画無効のときVレジスタがパレットテーブル領域を指している場合はその色が出力される (強制ブランキング / forced blank)
+			paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+
+			// スプライトパレットNの0番目の色は背景パレットNの0番目がミラーリングされる
+			if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
+				paletteTableIndex -= 0x10
+			}
+			color = PALETTE[p.paletteTable[paletteTableIndex]]
+		} else {
+			// 通常時はユニバーサル背景色 (背景パレット0の0番目) を出力
+			color = PALETTE[p.paletteTable[0x00]]
+		}
 	case !bgOpaque && spOpaque: // 背景のみ透明
 		color = p.getSpriteColor(spAttributes, spPattern)
 	case bgOpaque && !spOpaque: // スプライトのみ透明
 		color = p.getBackgroundColor(bgAttribute, bgPattern)
 	case bgOpaque && spOpaque: // 両方不透明
-		// スプライト優先の場合
 		if spPriority == 0 {
+			// スプライト優先の場合
 			color = p.getSpriteColor(spAttributes, spPattern)
 		} else {
+			// 背景優先の場合
 			color = p.getBackgroundColor(bgAttribute, bgPattern)
 		}
 	}
 
 	// 決定した色を描画
-	p.canvas.SetPixel(screenX, screenY, color)
+	p.canvas.SetPixel(screenX, screenY, p.getEmphasizedColor(color))
 }
 
 // MARK: VRAMアドレスをミラーリング
@@ -631,7 +669,7 @@ func (p *PPU) mirrorVRAMAddress(address uint16) uint16 {
 // MARK: VRAMアドレスのインクリメント
 func (p *PPU) incrementVRAMAddress() {
 	step := uint16(p.control.VRAMAddressIncrement())
-	address := (p.v.ToByte() + step)
+	address := (p.v.ToWord() + step)
 	p.v.SetFromWord(address & PPU_MEMORY_ADDRESS_MASK)
 }
 
@@ -639,6 +677,7 @@ func (p *PPU) incrementVRAMAddress() {
 func (p *PPU) incrementCycles() {
 	// ドットを進める
 	p.dot++
+
 	// 端に達したらドットを0に戻しスキャンラインを進める
 	if p.dot > SCANLINE_END {
 		p.dot = 0
@@ -657,7 +696,7 @@ func (p *PPU) clearSecondaryOAM() {
 	for i := range p.secondaryOAM {
 		p.secondaryOAM[i] = 0xFF
 	}
-	p.spriteZeroIndex = SPRITE_ZERO_NOT_FOUND
+	p.isSpriteZeroOnLine = false
 }
 
 // MARK: Vレジスタから描画中の行・列のネームテーブルのアドレスを取得
@@ -666,7 +705,7 @@ func (p *PPU) getNameTableAddress() uint16 {
 		基準となるネームテーブルの始点 ($2000 | $2400 | $2800 | $2C00) と
 		Vレジスタの下位12ビット(NN YYYYY XXXXX)の論理和で現在の行・列のアドレスが求まる
 	*/
-	return 0x2000 | (p.v.ToByte() & 0x0FFF)
+	return 0x2000 | (p.v.ToWord() & 0x0FFF)
 }
 
 // MARK: Vレジスタから描画中の属性テーブルのアドレスを取得
@@ -678,7 +717,7 @@ func (p *PPU) getAttributeTableAddress() uint16 {
 		(v >> 2) & 0x07: X座標 (列) をメタタイル単位(4列ごと)に変換
 	*/
 
-	v := p.v.ToByte()
+	v := p.v.ToWord()
 	return 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
 }
 
@@ -686,7 +725,7 @@ func (p *PPU) getAttributeTableAddress() uint16 {
 func (p *PPU) getBackgroundPatternAddress(isUpper bool) uint16 {
 	base := p.control.BackgroundPatternTableAddress()
 	tile := p.backgroundLatch.nameTable
-	fineY := (p.v.ToByte() >> 12) & 0x07
+	fineY := (p.v.ToWord() >> 12) & 0x07
 	offset := 0
 	if isUpper {
 		offset = TILE_SIZE
@@ -812,27 +851,52 @@ func (p *PPU) getSpritePixel() (pixel uint8, attributes uint8, isSpriteZero bool
 func (p *PPU) getBackgroundColor(attribute uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
-		paletteIndex := p.paletteTable[0x00]
-		return PALETTE[paletteIndex]
+		colorIndex := p.paletteTable[0x00]
+		return PALETTE[colorIndex]
 	}
 
 	paletteTableIndex := ((attribute & 0x03) << 2) + pattern
-	paletteIndex := p.paletteTable[paletteTableIndex]
-	return PALETTE[paletteIndex]
+	colorIndex := p.paletteTable[paletteTableIndex]
+	return PALETTE[colorIndex]
 }
 
 // MARK: 属性情報とピクセルの値からスプライトの色を取得するメソッド
 func (p *PPU) getSpriteColor(attributes uint8, pattern uint8) sdl.Color {
 	// 透明の場合は背景色を返す
 	if pattern == 0x00 {
-		paletteIndex := p.paletteTable[0x00]
-		return PALETTE[paletteIndex]
+		colorIndex := p.paletteTable[0x00]
+		return PALETTE[colorIndex]
 	}
 
 	// スプライトパレットの開始位置 0x10 をオフセットとして加算
 	paletteTableIndex := 0x10 + ((attributes & 0x03) << 2) + pattern
-	paletteIndex := p.paletteTable[paletteTableIndex]
-	return PALETTE[paletteIndex]
+	colorIndex := p.paletteTable[paletteTableIndex]
+	return PALETTE[colorIndex]
+}
+
+// MARK: マスクレジスタの値から色強調を反映した色を取得するメソッド
+func (p *PPU) getEmphasizedColor(baseColor sdl.Color) sdl.Color {
+	// 全色強調ビットがクリアであれば元の色を返す
+	if !p.mask.emphasizeRed && !p.mask.emphasizeGreen && !p.mask.emphasizeBlue {
+		return baseColor
+	}
+
+	r := baseColor.R
+	g := baseColor.G
+	b := baseColor.B
+
+	// 協調されていない色成分を弱める
+	if !p.mask.emphasizeRed {
+		r = uint8(float32(r) * COLOR_EMPHASIZE_FACTOR)
+	}
+	if !p.mask.emphasizeGreen {
+		g = uint8(float32(g) * COLOR_EMPHASIZE_FACTOR)
+	}
+	if !p.mask.emphasizeBlue {
+		b = uint8(float32(b) * COLOR_EMPHASIZE_FACTOR)
+	}
+
+	return sdl.Color{R: r, G: g, B: b}
 }
 
 // MARK: 待機中のNMI状態をチェックするメソッド

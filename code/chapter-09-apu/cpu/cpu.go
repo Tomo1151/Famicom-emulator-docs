@@ -11,7 +11,6 @@ type CPU struct {
 	registers      registers
 	bus            bus.Bus
 	instructionSet instructionSet
-	cycles         uint
 }
 
 // MARK: CPUのコンストラクタ
@@ -28,7 +27,6 @@ func NewCPU(bus bus.Bus) *CPU {
 		PC: cpu.bus.ReadWordFrom(0xFFFC),
 		P:  NewStatusRegister(),
 	}
-	cpu.cycles = 0
 
 	// FIXME: nestest用のエントリポイント
 	// cpu.registers.PC = 0xC000
@@ -57,7 +55,6 @@ func (c *CPU) Step() {
 	}
 
 	// 各コンポーネントのクロック
-	c.cycles += uint(instruction.Cycles)
 	c.bus.Tick(uint(instruction.Cycles))
 
 	if c.bus.NMI() {

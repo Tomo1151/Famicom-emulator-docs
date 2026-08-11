@@ -360,7 +360,7 @@ type AddressRegiseter struct {
 	/*
 		PPU アドレスレジスタ
 
-		16            8  7              0
+		14            8  7              0
 		---------------  ----------------
 		y y y  N N  Y Y  Y Y Y  X X X X X
 		L + |  L |  L +  + + |  L + + + |
@@ -399,19 +399,19 @@ func (ar *AddressRegiseter) updateNameTable(value uint8) {
 func (ar *AddressRegiseter) updateScroll(value uint8, latch bool) {
 	/*
 		1回目の書き込み (w = 0): Xスクロールのセット
-		T: ....... ...ABCDE ← value: ABCDEFGH
+		T: ........ ...ABCDE ← value: ABCDEFGH
 
 		2回目の書き込み (w = 1): Yスクロールのセット
-		T: FGH..AB CDE..... ← value: ABCDEFGH
+		T: .FGH..AB CDE..... ← value: ABCDEFGH
 	*/
 
 	if !latch {
 		// Xスクロールのセット
-		ar.coarseX = (value & 0xF8) >> 3
+		ar.coarseX = value >> 3
 	} else {
 		// Yスクロールのセット
 		ar.fineY = value & 0x07
-		ar.coarseY = (value & 0xF8) >> 3
+		ar.coarseY = value >> 3
 	}
 }
 
@@ -419,14 +419,14 @@ func (ar *AddressRegiseter) updateScroll(value uint8, latch bool) {
 func (ar *AddressRegiseter) updateAddress(value uint8, latch bool) {
 	/*
 		1回目の書き込み (w = 0): 上位バイトのセット
-		   yyyNNYY YYYXXXXX
-			 ------- --------
-		T: .CDEFGH ........ ← value: ..CDEFGH
+			.yyyNNYY YYYXXXXX
+		    -------- --------
+		T:  ..CDEFGH ........ ← value: ABCDEFGH
 
 		2回目の書き込み (w = 1): 下位バイトのセット
-			 yyyNNYY YYYXXXXX
-			 ------- --------
-		T: ....... ABCDEFGH ← value: ABCDEFGH
+			.yyyNNYY YYYXXXXX
+			-------- --------
+		T:  ........ ABCDEFGH ← value: ABCDEFGH
 	*/
 
 	if !latch {
@@ -493,7 +493,7 @@ func (ar *AddressRegiseter) copyVerticalBitsTo(target *AddressRegiseter) {
 }
 
 // アドレスレジスタをuint16へ変換するメソッド
-func (ar *AddressRegiseter) ToByte() uint16 {
+func (ar *AddressRegiseter) ToWord() uint16 {
 	var value uint16 = 0x00
 	value |= uint16(ar.fineY) << 12
 	value |= uint16(ar.nameTable) << 10
@@ -542,8 +542,7 @@ func (xr *XRegister) update(value uint8) {
 		2回目の書き込み (w = 1): 何もしない
 	*/
 
-	xr.fineX &= ^uint8(0x07) // 元の値をクリア
-	xr.fineX |= value & 0x07 // 下位3bitに書き込み
+	xr.fineX = value & 0x07 // 下位3bitに書き込み
 }
 
 // MARK: Wレジスタ (PPU内部)

@@ -85,9 +85,10 @@ func main() {
 
 	// PPUの作成
 	p := ppu.NewPPU(ct.Mapper(), &cv)
+	buf := unsafe.Pointer(&(cv.Buffer())[0])
 
 	// Busの作成
-	b := bus.NewBus(ct, a, &p, &j1, &j2)
+	b := bus.NewBus(ct.Mapper(), a, &p, &j1, &j2)
 
 	// CPUの作成
 	c := cpu.NewCPU(b)
@@ -151,7 +152,7 @@ func main() {
 		}
 
 		// テクスチャの更新
-		texture.Update(nil, unsafe.Pointer(&(cv.Buffer())[0]), int(ppu.SCREEN_WIDTH*3))
+		texture.Update(nil, buf, int(ppu.SCREEN_WIDTH*3))
 
 		// テクスチャの描画
 		renderer.Clear()
