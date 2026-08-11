@@ -68,8 +68,6 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 		$1000-$17FF 0x0800
 		$1800-$1FFF 0x0800
 
-		$2000              PPU コントロールレジスタ
-		$2001              PPU マスクレジスタ
 		$2002              PPU ステータスレジスタ
 		$2004              OAM データ
 		$2007              PPU データ
@@ -108,7 +106,6 @@ func (b *Bus) ReadByteFrom(address uint16) uint8 {
 	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
 		return b.mapper.ReadProgramROM(address)
 	default:
-		// TODO: 正しいコンポーネントから値を読み取って返す
 		return 0x00
 	}
 }
@@ -205,7 +202,6 @@ func (b *Bus) WriteByteAt(address uint16, value uint8) {
 	case 0x8000 <= address && address <= CPU_ADDRESS_END: // PRG ROM
 		b.mapper.WriteProgramROM(address, value)
 	default:
-		// TODO: 正しいコンポーネントに値を書き込む
 	}
 }
 
