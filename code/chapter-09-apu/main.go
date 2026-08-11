@@ -75,6 +75,7 @@ func main() {
 
 	// キャンバスの作成
 	cv := ppu.NewCanvas()
+	buf := unsafe.Pointer(&(cv.Buffer())[0])
 
 	// コントローラの作成
 	j1 := joypad.NewJoypad()
@@ -85,7 +86,6 @@ func main() {
 
 	// PPUの作成
 	p := ppu.NewPPU(ct.Mapper(), &cv)
-	buf := unsafe.Pointer(&(cv.Buffer())[0])
 
 	// Busの作成
 	b := bus.NewBus(ct.Mapper(), a, &p, &j1, &j2)
