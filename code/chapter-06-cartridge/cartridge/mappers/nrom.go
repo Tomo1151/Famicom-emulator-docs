@@ -28,14 +28,14 @@ func (r *NROM) Init(romdata []uint8) {
 // MARK: プログラムRAMの読み取りメソッド
 func (r *NROM) ReadProgramRAM(address uint16) uint8 {
 	// NOTE: 公式のNROM基板では必要ないが，拡張されたFamily Basicなどの互換性を保つ
-	romAddress := address - 0x6000
-	return r.characterRAM[romAddress]
+	romAddress := address - PRG_RAM_START
+	return r.programRAM[romAddress]
 }
 
 // MARK: プログラムROMの読み取りメソッド
 func (r *NROM) ReadProgramROM(address uint16) uint8 {
 	// ROMは$8000からマッピングされているため，オフセット分引いて配列のインデックスにする
-	romAddress := address - 0x8000
+	romAddress := address - PRG_ROM_START
 
 	// 16kBのROMでアドレスが16kB以上の場合はミラーリング
 	if len(r.programROM) == 0x4000 && romAddress >= 0x4000 {
@@ -47,16 +47,16 @@ func (r *NROM) ReadProgramROM(address uint16) uint8 {
 // MARK: キャラクタROMの読み取りメソッド
 func (r *NROM) ReadCharacterROM(address uint16) uint8 {
 	if r.isCharacterRAM {
-		return r.characterROM[address]
-	} else {
 		return r.characterRAM[address]
+	} else {
+		return r.characterROM[address]
 	}
 }
 
 // MARK: プログラムRAMの書き込みメソッド
 func (r *NROM) WriteProgramRAM(address uint16, value uint8) {
 	// NOTE: 公式のNROM基板では必要ないが，拡張されたFamily Basicなどの互換性を保つ
-	romAddress := address - 0x6000
+	romAddress := address - PRG_RAM_START
 	r.programRAM[romAddress] = value
 }
 

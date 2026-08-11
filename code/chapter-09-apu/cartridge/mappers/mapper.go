@@ -2,9 +2,19 @@ package mappers
 
 // MARK: 定数定義
 const (
+	// ページサイズ
 	PRG_ROM_PAGE_SIZE uint = 16 * 1024 // 16kB
 	PRG_RAM_PAGE_SIZE uint = 8 * 1024  // 16kB
 	CHR_ROM_PAGE_SIZE uint = 8 * 1024  // 8kB
+
+	// CPUバス
+	PRG_RAM_START uint16 = 0x6000
+	PRG_ROM_START uint16 = 0x8000
+	PRG_ROM_END   uint16 = 0xFFFF
+
+	// PPUバス
+	CHR_ROM_START uint16 = 0x0000
+	CHR_ROM_END   uint16 = 0x1FFF
 )
 
 const (
@@ -101,7 +111,7 @@ func ExtractROMs(romdata []uint8) (programROM, characterROM []uint8) {
 
 // MARK: ROMファイルからROG RAMとCHR RAMを生成する関数
 func GenerateRAMs(romdata []uint8) (programRAM, characterRAM []uint8) {
-	programRAM = make([]uint8, programRAMSize(romdata))
+	programRAM = make([]uint8, max(programRAMSize(romdata), PRG_RAM_PAGE_SIZE))
 	characterRAM = make([]uint8, CHR_ROM_PAGE_SIZE)
 	return programRAM, characterRAM
 }
