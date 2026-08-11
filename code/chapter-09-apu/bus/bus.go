@@ -201,3 +201,13 @@ func (b *Bus) WriteWordAt(address uint16, value uint16) {
 func (b *Bus) NMI() bool {
 	return b.ppu.PollNMI()
 }
+
+// MARK: APU割り込みの取得
+func (b *Bus) APUIRQ() bool {
+	return b.apu.IRQ()
+}
+
+// MARK: DMC用CPUバス読み取り
+func (b *Bus) DMCRead(address uint16) uint8 {
+	return b.ReadByteFrom(address)
+}

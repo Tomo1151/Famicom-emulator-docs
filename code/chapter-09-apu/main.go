@@ -65,7 +65,7 @@ func main() {
 	defer texture.Destroy()
 
 	// カートリッジの作成
-	ct := cartridge.NewCartridge("nestest.nes")
+	ct := cartridge.NewCartridge("mapperless.nes")
 
 	// ROMファイルの読み込み
 	err = ct.Load()
@@ -89,6 +89,9 @@ func main() {
 
 	// Busの作成
 	b := bus.NewBus(ct.Mapper(), a, &p, &j1, &j2)
+
+	// APU にreaderをセット
+	a.SetMemoryReader(b.DMCRead)
 
 	// CPUの作成
 	c := cpu.NewCPU(b)

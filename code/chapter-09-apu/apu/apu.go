@@ -103,6 +103,11 @@ func (a *APU) Tick(cycles uint) {
 		a.channel4.Tick()
 		a.channel5.Tick()
 
+		// DMCの割り込みをステータスレジスタに反映
+		if a.channel5.IRQ() {
+			a.status.SetDMCIRQ(true)
+		}
+
 		// CPUサイクルをサンプリングレートに変換
 		if a.phase >= CYCLES_PER_SAMPLE {
 			a.phase -= CYCLES_PER_SAMPLE
@@ -181,6 +186,9 @@ func (a *APU) ReadStatus() uint8 {
 	if !a.channel4.lengthCounter.Muted() {
 		status |= 1 << STATUS_REG_IS_4CH_ACTIVE_POS
 	}
+	if a.channel5.IsActive() {
+		status |= 1 << STATUS_REG_IS_5CH_ACTIVE_POS
+	}
 	if a.status.FrameIRQ() {
 		status |= 1 << STATUS_REG_FRAME_IRQ_POS
 	}
@@ -188,7 +196,7 @@ func (a *APU) ReadStatus() uint8 {
 		status |= 1 << STATUS_REG_DMC_IRQ_POS
 	}
 
-	// フレームカウンタ割込みフラグをクリア
+	// フレームカウンタ割り込みフラグをクリア
 	a.status.SetFrameIRQ(false)
 
 	return status
@@ -214,9 +222,11 @@ func (a *APU) WriteStatus(value uint8) {
 	if !a.status.is4chActive {
 		a.channel4.lengthCounter.clear()
 	}
+	a.channel5.SetEnabled(a.status.is5chActive)
 
 	// DMC割込みフラグをクリア
 	a.status.SetDMCIRQ(false)
+	a.channel5.SetIRQ(false)
 }
 
 // MARK: フレームカウンタの書き込み (CPU: $4017)
@@ -235,32 +245,40 @@ func (a *APU) WriteFrameCounter(value uint8) {
 	// 各種状態をリセット
 	a.step = 0
 	a.cycles = 0
-	a.status.SetFrameIRQ(false)
+	if a.frameCounter.disableIRQ {
+		a.status.SetFrameIRQ(false)
+	}
 }
 
 // MARK: 1chへの書き込み (矩形波)
 func (a *APU) Write1ch(address uint16, value uint8) {
-	a.channel1.write(address, value)
+	a.channel1.write(address, value, a.status.is1chActive)
 }
 
 // MARK: 2chへの書き込み (矩形波)
 func (a *APU) Write2ch(address uint16, value uint8) {
-	a.channel2.write(address, value)
+	a.channel2.write(address, value, a.status.is2chActive)
 }
 
 // MARK: 3chへの書き込み (三角波)
 func (a *APU) Write3ch(address uint16, value uint8) {
-	a.channel3.write(address, value)
+	a.channel3.write(address, value, a.status.is3chActive)
 }
 
 // MARK: 4chへの書き込み (ノイズ)
 func (a *APU) Write4ch(address uint16, value uint8) {
-	a.channel4.write(address, value)
+	a.channel4.write(address, value, a.status.is4chActive)
 }
 
 // MARK: 5chへの書き込み (DMC)
 func (a *APU) Write5ch(address uint16, value uint8) {
 	a.channel5.write(address, value)
+
+	// IRQ enabledビットがクリアされるとIRQフラグも即座にクリアされる
+	if address == 0x4010 && value&0x80 == 0 {
+		a.status.SetDMCIRQ(false)
+		a.channel5.SetIRQ(false)
+	}
 }
 
 // MARK: フレームカウンタのクロック
@@ -345,6 +363,11 @@ func (a *APU) tickSweepUnits() {
 // MARK: フレームカウンタ割り込みの取得
 func (a *APU) FrameIRQ() bool {
 	return a.status.FrameIRQ()
+}
+
+// MARK:APU IRQの取得
+func (a *APU) IRQ() bool {
+	return a.status.FrameIRQ() || a.status.DMCIRQ()
 }
 
 // MARK: 各チャンネルのサンプルを適切なバランスでミックスする関数

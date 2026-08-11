@@ -69,7 +69,7 @@ func (swc *SquareWaveChannel) Tick() {
 }
 
 // MARK: 矩形波チャンネルの書き込み
-func (swc *SquareWaveChannel) write(address uint16, value uint8) {
+func (swc *SquareWaveChannel) write(address uint16, value uint8, isActive bool) {
 	swc.register.write(address, value)
 
 	switch address {
@@ -113,7 +113,9 @@ func (swc *SquareWaveChannel) write(address uint16, value uint8) {
 			- 長さカウンタ
 		*/
 		swc.sweepUnit.timerPeriod = uint16(swc.register.timerUpper)<<8 | (swc.sweepUnit.timerPeriod & 0x00FF)
-		swc.lengthCounter.load(swc.register.lengthCounterLoad)
+		if isActive {
+			swc.lengthCounter.load(swc.register.lengthCounterLoad)
+		}
 
 		/*
 			副作用

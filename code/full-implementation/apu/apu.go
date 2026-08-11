@@ -102,6 +102,8 @@ func (a *APU) Tick(cycles uint) {
 		a.channel3.Tick()
 		a.channel4.Tick()
 		a.channel5.Tick()
+
+		// DMCの割り込みをステータスレジスタに反映
 		if a.channel5.IRQ() {
 			a.status.SetDMCIRQ(true)
 		}
@@ -201,7 +203,7 @@ func (a *APU) ReadStatus() uint8 {
 		status |= 1 << STATUS_REG_DMC_IRQ_POS
 	}
 
-	// フレームカウンタ割込みフラグをクリア
+	// フレームカウンタ割り込みフラグをクリア
 	a.status.SetFrameIRQ(false)
 
 	return status

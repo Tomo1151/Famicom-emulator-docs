@@ -88,6 +88,7 @@ type SweepUnit struct {
 	direction   uint8  // スイープ方向
 	period      uint8  // 分周器の周期
 	enabled     bool   // スイープユニットの有効フラグ
+	muted       bool   // ミュート状態
 }
 
 // MARK: SweepUnitのコンストラクタ
@@ -112,6 +113,13 @@ func (su *SweepUnit) Tick(lengthCounter *LengthCounter, is1ch bool) {
 	if !su.reload && su.timer > 0 {
 		return
 	}
+
+	/*
+		分周器の励起またはリロードが発生直後，タイマをリロードしてフラグをクリアする
+		分周器の周期はスイープ周期+1にセットされる
+	*/
+	su.timer = su.period + 1
+	su.reload = false
 
 	/*
 		以下の3つの条件にすべて当てはまるときのみチャンネルの周期を更新する
@@ -141,12 +149,15 @@ func (su *SweepUnit) Tick(lengthCounter *LengthCounter, is1ch bool) {
 		}
 	}
 
+	// 更新後の周期が上限を上回ったらミュートする
+	if 0x07FF < target {
+		su.muted = true
+		return
+	}
+
 	// スイープ後の周期に値をセットし，リロードフラグをクリア
 	su.timerPeriod = target
-	su.reload = false
-
-	// 分周器の周期はスイープ周期+1にセットされる
-	su.timer = su.period + 1
+	su.muted = false
 }
 
 // MARK: スイープユニットの更新
@@ -158,6 +169,7 @@ func (su *SweepUnit) update(shift, direction, period uint8, enabled bool) {
 
 	// 更新時にリロードフラグをセット
 	su.reload = true
+	su.muted = false
 }
 
 // MARK: スイープユニットからチャンネル周期の取得
@@ -167,8 +179,16 @@ func (su *SweepUnit) Period() uint16 {
 
 // MARK: スイープユニットのミュート状態の取得
 func (su *SweepUnit) Muted() bool {
-	// チャンネルの周期が8未満または0x07FF以上の場合，スイープを停止し，チャンネルを無音化する
-	return su.timerPeriod < 8 || 0x07FF < su.timerPeriod
+	/*
+		周期が 8 より小さいまたは 0x07FF より大きい場合は音が出ない
+
+		@NOTE:
+		周期が8より小さい場合の高音は，タイマ回路の物理的限界によりカットされ，
+		周期が0x07FFより大きい低音は，11ビットのタイマ周期のオーバーフローによって消音される
+		これらは同じ範囲外によるミュートではあるが，発生理由が異なる
+		ref: https://www.nesdev.org/wiki/APU_Sweep
+	*/
+	return su.timerPeriod < 8 || su.muted
 }
 
 // MARK: スイープユニットの有効/無効の取得

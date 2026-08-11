@@ -42,6 +42,9 @@ func (c *CPU) Step() {
 	// 命令のデコード
 	instruction := c.instructionSet[opcode]
 
+	// 各コンポーネントのクロック
+	c.bus.Tick(uint(instruction.Cycles))
+
 	// 命令の実行
 	instruction.Handler(instruction.AddressingMode)
 
@@ -54,11 +57,10 @@ func (c *CPU) Step() {
 		c.registers.PC += uint16(instruction.Bytes - 1)
 	}
 
-	// 各コンポーネントのクロック
-	c.bus.Tick(uint(instruction.Cycles))
-
 	if c.bus.NMI() {
 		c.interrupt(NMI)
+	} else if !c.registers.P.IrqDisabled && (c.bus.APUIRQ()) {
+		c.interrupt(IRQ)
 	}
 }
 

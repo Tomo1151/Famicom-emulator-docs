@@ -518,8 +518,8 @@ type FrameCounter struct {
 // MARK: フレームカウンタのコンストラクタ
 func NewFrameCounter() FrameCounter {
 	return FrameCounter{
-		disableIRQ:    true,
-		sequencerMode: true,
+		disableIRQ:    false,
+		sequencerMode: false,
 	}
 }
 
@@ -537,6 +537,21 @@ func (fc *FrameCounter) Mode() uint8 {
 // MARK: IRQ禁止フラグの取得
 func (fc *FrameCounter) DisableIRQ() bool {
 	return fc.disableIRQ
+}
+
+// MARK: ステータスレジスタをuint8へ変換するメソッド
+func (fc *FrameCounter) ToByte() uint8 {
+	var value uint8 = 0x00
+
+	if fc.disableIRQ {
+		value |= 1 << FRAME_COUNTER_IRQ_POS
+	}
+
+	if fc.sequencerMode {
+		value |= 1 << FRAME_COUNTER_MODE_POS
+	}
+
+	return value
 }
 
 // MARK: フレームカウンタの更新メソッド
@@ -564,7 +579,10 @@ func (dsr *DMCShiftRegisteer) shift() uint8 {
 	value := dsr.value & 0x01
 
 	dsr.value >>= 1
-	dsr.remaining--
+
+	if dsr.remaining > 0 {
+		dsr.remaining--
+	}
 
 	return value
 }
@@ -577,6 +595,7 @@ func (dsr *DMCShiftRegisteer) Value() uint8 {
 // MARK: DMCシフトレジスタの出力値をセット
 func (dsr *DMCShiftRegisteer) SetValue(value uint8) {
 	dsr.value = value
+	dsr.remaining = 8
 }
 
 // MARK: 残りビット数の取得
