@@ -579,7 +579,7 @@ func (wr *WRegister) reset() {
 
 // MARK: 背景用ラッチ
 type BackgroundLatch struct {
-	nameTable    uint8 // 描画する背景タイルの番号
+	tileIndex    uint8 // 描画する背景タイルの番号
 	attribute    uint8 // 背景の属性情報
 	patternLower uint8 // 背景タイルのビットプレーン 0
 	patternUpper uint8 // 背景タイルのビットプレーン 1
@@ -587,7 +587,7 @@ type BackgroundLatch struct {
 
 func NewBackgroundLatch() BackgroundLatch {
 	return BackgroundLatch{
-		nameTable:    0x00,
+		tileIndex:    0x00,
 		attribute:    0x00,
 		patternLower: 0x00,
 		patternUpper: 0x00,
@@ -624,6 +624,7 @@ func NewBackgroundShiftRegister() BackgroundShiftRegister {
 	}
 }
 
+// 背景シフトレジスタのシフトメソッド
 func (sr *BackgroundShiftRegister) shift() {
 	sr.attributeLower <<= 1
 	sr.attributeUpper <<= 1
@@ -631,24 +632,27 @@ func (sr *BackgroundShiftRegister) shift() {
 	sr.patternUpper <<= 1
 }
 
-func (sr *BackgroundShiftRegister) load(latch *BackgroundLatch) {
+// 背景ラッチから背景シフトレジスタに値をロードするメソッド
+func (sr *BackgroundShiftRegister) load(latch *BackgroundLatch, coarseX, coarseY uint8) {
 	// 新しい値を書き込むために下位バイトをクリア
 	sr.patternLower &= 0xFF00
 	sr.patternUpper &= 0xFF00
 	sr.attributeLower &= 0xFF00
 	sr.attributeUpper &= 0xFF00
 
-	// 新しい値を下位バイトに書き込み
-	// ビットプレーン
+	// 新たなビットプレーンを下位バイトに書き込み
 	sr.patternLower |= uint16(latch.patternLower)
 	sr.patternUpper |= uint16(latch.patternUpper)
 
-	// 属性(パレット)情報
-	// 次のフェッチタイミングまでの分(8ピクセル分)書き込む
-	if latch.attribute&0b01 != 0 {
+	// スクロール座標をもとに背景パレット番号 (2ビット) を取得
+	shift := ((coarseY>>1)&1)<<2 | ((coarseX>>1)&1)<<1
+	attributeBits := (latch.attribute >> shift) & 0x03
+
+	// 属性情報を1タイル分書き込む
+	if attributeBits&0b01 != 0 {
 		sr.attributeLower |= 0xFF
 	}
-	if latch.attribute&0b10 != 0 {
+	if attributeBits&0b10 != 0 {
 		sr.attributeUpper |= 0xFF
 	}
 }

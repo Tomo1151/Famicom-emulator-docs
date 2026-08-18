@@ -308,6 +308,14 @@ func (p *PPU) DMATransfer(bytes *[256]uint8) {
 
 // MARK: 可視スキャンラインの処理
 func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
+	// レンダリングが無効な場合は背景色を出力
+	if !isRenderingEnabled {
+		if 1 <= p.dot && p.dot <= 256 {
+			p.renderBackdropPixel()
+		}
+		return
+	}
+
 	// ラインの先頭でセカンダリOAMを初期化
 	if p.dot == 1 {
 		p.clearSecondaryOAM()
@@ -321,35 +329,22 @@ func (p *PPU) tickVisibleScanline(isRenderingEnabled bool) {
 	// 描画
 	if 1 <= p.dot && p.dot <= 256 {
 		p.renderPixel()
-
-		if isRenderingEnabled {
-			p.shiftSpriteRegisters()
-		}
 	}
 
-	if !isRenderingEnabled {
-		return
-	}
+	// 描画用シフトレジスタのシフト
+	p.shiftRegisters()
 
-	// 背景フェッチ
+	// 背景・スプライトフェッチ
 	p.fetchBackgroundPipeline()
+	p.fetchSpritePipeline()
 
-	// スクロール更新
-	if p.dot == 256 {
-		p.v.incrementVertical()
-	}
-	if p.dot == 257 {
-		p.t.copyHorizontalBitsTo(&p.v)
-		p.oamAddress = 0x00
-	}
+	// スクロールの更新
+	p.updateCounters()
 
 	// マッパー割り込みの生成
 	if p.dot == 260 {
 		p.mapper.GenerateScanlineIRQ(p.scanline, isRenderingEnabled)
 	}
-
-	// スプライトフェッチ
-	p.fetchSpritePipeline()
 }
 
 // MARK: VBlankラインの処理
@@ -365,11 +360,20 @@ func (p *PPU) tickVBlankScanline() {
 
 // MARK: プリレンダーラインの処理
 func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
-	// ラインの先頭各種フラグのクリアとセカンダリOAMの初期化
+	// ラインの先頭各種フラグのクリア
 	if p.dot == 1 {
 		p.status.SetVBlank(false)
 		p.status.SetSpriteZeroHit(false)
 		p.status.SetSpriteOverflow(false)
+	}
+
+	// レンダリングが無効な場合は何もしない
+	if !isRenderingEnabled {
+		return
+	}
+
+	// セカンダリOAMの初期化
+	if p.dot == 1 {
 		p.clearSecondaryOAM()
 	}
 
@@ -378,27 +382,15 @@ func (p *PPU) tickPreRenderScanline(isRenderingEnabled bool) {
 		p.evaluateNextLineSprite()
 	}
 
-	if !isRenderingEnabled {
-		return
-	}
+	// 描画用シフトレジスタのシフト
+	p.shiftRegisters()
 
-	// 背景フェッチ
+	// 背景・スプライトフェッチ
 	p.fetchBackgroundPipeline()
-
-	// スクロール更新
-	if p.dot == 256 {
-		p.v.incrementVertical()
-	}
-	if p.dot == 257 {
-		p.t.copyHorizontalBitsTo(&p.v)
-		p.oamAddress = 0x00
-	}
-	if 280 <= p.dot && p.dot <= 304 {
-		p.t.copyVerticalBitsTo(&p.v)
-	}
-
-	// スプライトフェッチ
 	p.fetchSpritePipeline()
+
+	// スクロールの更新
+	p.updateCounters()
 }
 
 // MARK: 次のスキャンラインで描画するスプライトの評価
@@ -451,8 +443,7 @@ func (p *PPU) evaluateNextLineSprite() {
 // MARK: 背景フェッチパイプライン
 func (p *PPU) fetchBackgroundPipeline() {
 	if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
-		// 背景パターンのフェッチ
-		p.backgroundShift.shift()
+		// 次ラインの背景パターンをフェッチ
 		p.fetchBackground()
 	}
 }
@@ -460,7 +451,7 @@ func (p *PPU) fetchBackgroundPipeline() {
 // MARK: スプライトフェッチパイプライン
 func (p *PPU) fetchSpritePipeline() {
 	if 257 <= p.dot && p.dot <= 320 {
-		// 次のライン用にタイルをフェッチ
+		// 次ラインのスプライトパターンをフェッチ
 		spriteIndex := (p.dot - 257) / TILE_SIZE
 		p.fetchSprite(spriteIndex)
 	}
@@ -481,24 +472,22 @@ func (p *PPU) fetchBackground() {
 	switch p.dot % TILE_SIZE {
 	case 1: // ネームテーブルのフェッチ
 		nameTableAddress := p.getNameTableAddress()
-		tile := p.ReadPPUMemory(nameTableAddress)
-		p.backgroundLatch.nameTable = tile
+		tileIndex := p.ReadPPUMemory(nameTableAddress)
+		p.backgroundLatch.tileIndex = tileIndex
 	case 3: // 属性テーブルのフェッチ
 		attributeTableAddress := p.getAttributeTableAddress()
 		attribute := p.ReadPPUMemory(attributeTableAddress)
-		// Vレジスタの位置に応じて該当する2ビットを抽出する
-		shift := ((p.v.coarseY>>1)&1)<<2 | ((p.v.coarseX>>1)&1)<<1
-		p.backgroundLatch.attribute = (attribute >> shift) & 0x03
+		p.backgroundLatch.attribute = attribute
 	case 5: // パターンテーブル(下位)のフェッチ
-		patternTableAddress := p.getBackgroundPatternAddress(false)
+		patternTableAddress := p.getBackgroundPatternAddress(p.backgroundLatch.tileIndex, false)
 		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternLower = pattern
 	case 7: // パターンテーブル(上位)のフェッチ
-		patternTableAddress := p.getBackgroundPatternAddress(true)
+		patternTableAddress := p.getBackgroundPatternAddress(p.backgroundLatch.tileIndex, true)
 		pattern := p.ReadPPUMemory(patternTableAddress)
 		p.backgroundLatch.patternUpper = pattern
 	case 0: // ラッチからシフトレジスタへロード
-		p.backgroundShift.load(&p.backgroundLatch)
+		p.backgroundShift.load(&p.backgroundLatch, p.v.coarseX, p.v.coarseY)
 		p.v.incrementHorizontal() // VRAMアドレスの水平インクリメント
 	}
 }
@@ -540,17 +529,62 @@ func (p *PPU) fetchSprite(index uint) {
 	}
 }
 
-// MARK: スプライトシフトレジスタのシフト
-func (p *PPU) shiftSpriteRegisters() {
-	for i := range p.spriteShifts {
-		if p.spriteShifts[i].xDistance > 0 {
-			// 描画位置までは描画位置カウンタを減算
-			p.spriteShifts[i].xDistance--
-		} else {
-			// 描画位置になったら描画するドットを送り始める
-			p.spriteShifts[i].shift()
+// MARK: シフトレジスタのシフト処理
+func (p *PPU) shiftRegisters() {
+	// 背景のシフト
+	if (1 <= p.dot && p.dot <= 256) || (321 <= p.dot && p.dot <= 336) {
+		p.backgroundShift.shift()
+	}
+
+	// スプライトのシフト
+	if 1 <= p.dot && p.dot <= 256 {
+		for i := range p.spriteShifts {
+			if p.spriteShifts[i].xDistance > 0 {
+				// 描画位置までは描画位置カウンタを減算
+				p.spriteShifts[i].xDistance--
+			} else {
+				// 描画位置になったら描画するドットを送り始める
+				p.spriteShifts[i].shift()
+			}
 		}
 	}
+}
+
+// MARK: スクロールカウンタ等の更新処理
+func (p *PPU) updateCounters() {
+	if p.dot == 256 {
+		p.v.incrementVertical()
+	}
+	if p.dot == 257 {
+		p.t.copyHorizontalBitsTo(&p.v)
+		p.oamAddress = 0x00
+	}
+	if p.scanline == SCANLINE_PRERENDER {
+		if 280 <= p.dot && p.dot <= 304 {
+			p.t.copyVerticalBitsTo(&p.v)
+		}
+	}
+}
+
+// MARK: 背景色(Backdrop)の取得
+func (p *PPU) getBackdropColor() sdl.Color {
+	address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK
+	if !p.mask.backgroundEnable && !p.mask.spriteEnable && 0x3F00 <= address && address <= 0x3FFF {
+		paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
+		if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
+			paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
+		}
+		return PALETTE[p.paletteTable[paletteTableIndex]]
+	}
+	return PALETTE[p.paletteTable[0x00]]
+}
+
+// MARK: 背景色(Backdrop)の描画
+func (p *PPU) renderBackdropPixel() {
+	screenX := p.dot - 1
+	screenY := p.scanline
+	color := p.getBackdropColor()
+	p.canvas.SetPixel(screenX, screenY, p.getEmphasizedColor(color))
 }
 
 // MARK: ピクセルの書き込み
@@ -578,16 +612,7 @@ func (p *PPU) renderPixel() {
 	var color sdl.Color
 	switch {
 	case !bgOpaque && !spOpaque: // 両方透明
-		address := p.v.ToWord() & PPU_MEMORY_ADDRESS_MASK
-		if !p.mask.backgroundEnable && !p.mask.spriteEnable && 0x3F00 <= address && address <= 0x3FFF {
-			paletteTableIndex := (address - 0x3F00) % PPU_PALETTE_TABLE_SIZE
-			if paletteTableIndex >= 0x10 && paletteTableIndex%4 == 0 {
-				paletteTableIndex -= 0x10 // $3F10, $3F14, $3F18, $3F1C は $3F00 番台にミラーされる
-			}
-			color = PALETTE[p.paletteTable[paletteTableIndex]]
-		} else {
-			color = PALETTE[p.paletteTable[0x00]]
-		}
+		color = p.getBackdropColor()
 	case !bgOpaque && spOpaque: // 背景のみ透明
 		color = p.getSpriteColor(spAttributes, spPattern)
 	case bgOpaque && !spOpaque: // スプライトのみ透明
@@ -716,19 +741,21 @@ func (p *PPU) getAttributeTableAddress() uint16 {
 	*/
 
 	v := p.v.ToWord()
-	return 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
+	base := 0x23C0 | (v & 0x0C00)
+	row := uint16(p.v.coarseY >> 2)
+	column := uint16(p.v.coarseX >> 2)
+	offset := row*8 + column
+	return base | offset
 }
 
 // MARK: Vレジスタから描画中の背景タイルのパターンテーブルのアドレスを取得
-func (p *PPU) getBackgroundPatternAddress(isUpper bool) uint16 {
+func (p *PPU) getBackgroundPatternAddress(tileIndex uint8, isUpper bool) uint16 {
 	base := p.control.BackgroundPatternTableAddress()
-	tile := p.backgroundLatch.nameTable
-	fineY := (p.v.ToWord() >> 12) & 0x07
 	offset := 0
 	if isUpper {
 		offset = TILE_SIZE
 	}
-	return base + (uint16(tile) * TILE_SIZE * 2) + fineY + uint16(offset)
+	return base + (uint16(tileIndex) * TILE_SIZE * 2) + uint16(p.v.fineY) + uint16(offset)
 }
 
 // MARK: 描画中のスプライトタイルのパターンテーブルのアドレスを取得
@@ -736,7 +763,7 @@ func (p *PPU) getSpritePatternAddress(index uint, isUpper bool) uint16 {
 	// スプライトの情報を取得
 	secondaryBase := index * OAM_SPRITE_SIZE
 	spriteY := p.secondaryOAM[secondaryBase+OAM_SPRITE_Y_POS] + 1 // OAMのY座標は表示座標-1のため補正
-	spriteTile := p.secondaryOAM[secondaryBase+OAM_SPRITE_TILE_POS]
+	tileIndex := p.secondaryOAM[secondaryBase+OAM_SPRITE_TILE_POS]
 	attributes := p.secondaryOAM[secondaryBase+OAM_SPRITE_ATTR_POS]
 	spriteHeight := p.control.SpriteSize()
 
@@ -770,15 +797,15 @@ func (p *PPU) getSpritePatternAddress(index uint, isUpper bool) uint16 {
 		base = p.control.SpritePatternTableAddress()
 	} else {
 		// 8x16の場合
-		base = uint16(spriteTile&0x01) * 0x1000 // タイル番号のビット0がネームテーブル選択
-		spriteTile = spriteTile & 0xFE
+		base = uint16(tileIndex&0x01) * 0x1000 // タイル番号のビット0がネームテーブル選択
+		tileIndex = tileIndex & 0xFE
 		if tileY >= TILE_SIZE {
-			spriteTile++
+			tileIndex++
 			tileY -= TILE_SIZE
 		}
 	}
 
-	return base + (uint16(spriteTile) * TILE_SIZE * 2) + tileY + uint16(offset)
+	return base + (uint16(tileIndex) * TILE_SIZE * 2) + tileY + uint16(offset)
 }
 
 // MARK: 背景ピクセルの取得
